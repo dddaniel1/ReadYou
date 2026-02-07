@@ -30,22 +30,37 @@ sealed class ArticleFlowItem {
 /**
  * Mapping [ArticleWithFeed] list to [ArticleFlowItem] list.
  */
-fun PagingData<ArticleWithFeed>.mapPagingFlowItem(androidStringsHelper: AndroidStringsHelper): PagingData<ArticleFlowItem> =
+fun PagingData<ArticleWithFeed>.mapPagingFlowItem(
+    androidStringsHelper: AndroidStringsHelper,
+    includeDateSeparators: Boolean = true,
+): PagingData<ArticleFlowItem> =
     map {
-        ArticleFlowItem.Article(it.apply {
-            article.dateString = androidStringsHelper.formatAsString(
-                date = article.date,
-                onlyHourMinute = true
-            )
-        })
-    }.insertSeparators { before, after ->
-        val beforeDate =
-            androidStringsHelper.formatAsString(before?.articleWithFeed?.article?.date)
-        val afterDate =
-            androidStringsHelper.formatAsString(after?.articleWithFeed?.article?.date)
-        if (beforeDate != afterDate) {
-            afterDate?.let { ArticleFlowItem.Date(it, beforeDate != null) }
+        ArticleFlowItem.Article(
+            it.apply {
+                article.dateString = androidStringsHelper.formatAsString(
+                    date = article.date,
+                    onlyHourMinute = true,
+                )
+            }
+        ) as ArticleFlowItem
+    }.let { pagingData ->
+        if (!includeDateSeparators) {
+            pagingData
         } else {
-            null
+            pagingData.insertSeparators { before, after ->
+                val beforeDate =
+                    androidStringsHelper.formatAsString(
+                        (before as? ArticleFlowItem.Article)?.articleWithFeed?.article?.date,
+                    )
+                val afterDate =
+                    androidStringsHelper.formatAsString(
+                        (after as? ArticleFlowItem.Article)?.articleWithFeed?.article?.date,
+                    )
+                if (beforeDate != afterDate) {
+                    afterDate?.let { ArticleFlowItem.Date(it, beforeDate != null) }
+                } else {
+                    null
+                }
+            }
         }
     }

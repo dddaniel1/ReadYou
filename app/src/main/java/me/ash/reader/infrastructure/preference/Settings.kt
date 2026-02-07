@@ -43,6 +43,7 @@ data class Settings(
     val flowArticleListTonalElevation: FlowArticleListTonalElevationPreference = FlowArticleListTonalElevationPreference.default,
     val flowArticleListReadIndicator: FlowArticleReadIndicatorPreference = FlowArticleReadIndicatorPreference.default,
     val flowSortUnreadArticles: SortUnreadArticlesPreference = SortUnreadArticlesPreference.default,
+    val flowArticleListViewMode: FlowArticleListViewModePreference = FlowArticleListViewModePreference.default,
 
     // Reading page
     val readingRenderer: ReadingRendererPreference = ReadingRendererPreference.default,

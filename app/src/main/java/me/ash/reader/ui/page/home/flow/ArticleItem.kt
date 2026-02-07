@@ -10,8 +10,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -109,6 +111,144 @@ fun ArticleItem(
         onClick = { onClick(articleWithFeed) },
         onLongClick = onLongClick,
     )
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun ArticleGalleryItem(
+    modifier: Modifier = Modifier,
+    articleWithFeed: ArticleWithFeed,
+    isUnread: Boolean = articleWithFeed.article.isUnread,
+    isMenuEnabled: Boolean = true,
+    onClick: (ArticleWithFeed) -> Unit = {},
+    onToggleStarred: (ArticleWithFeed) -> Unit = {},
+    onToggleRead: (ArticleWithFeed) -> Unit = {},
+    onMarkAboveAsRead: ((ArticleWithFeed) -> Unit)? = null,
+    onMarkBelowAsRead: ((ArticleWithFeed) -> Unit)? = null,
+    onShare: ((ArticleWithFeed) -> Unit)? = null,
+) {
+    val feed = articleWithFeed.feed
+    val article = articleWithFeed.article
+
+    val articleListFeedName = LocalFlowArticleListFeedName.current
+    val articleListImage = LocalFlowArticleListImage.current
+    val articleListDate = LocalFlowArticleListTime.current
+    val articleListReadIndicator = LocalFlowArticleListReadIndicator.current
+
+    var isMenuExpanded by remember { mutableStateOf(false) }
+    var menuOffset by remember { mutableStateOf(IntOffset.Zero) }
+
+    val alpha =
+        when (articleListReadIndicator) {
+            FlowArticleReadIndicatorPreference.None -> 1f
+            FlowArticleReadIndicatorPreference.AllRead -> if (isUnread) 1f else 0.5f
+            FlowArticleReadIndicatorPreference.ExcludingStarred -> {
+                if (isUnread || article.isStarred) 1f else 0.5f
+            }
+        }
+
+    Box(
+        modifier =
+            modifier
+                .clip(Shape20)
+                .combinedClickable(
+                    onClick = { onClick(articleWithFeed) },
+                    onLongClick = if (isMenuEnabled) { { isMenuExpanded = true } } else null,
+                )
+                .pointerInput(isMenuExpanded) {
+                    awaitEachGesture {
+                        while (true) {
+                            awaitFirstDown(requireUnconsumed = false).let {
+                                menuOffset = it.position.round()
+                            }
+                        }
+                    }
+                }
+                .background(
+                    MaterialTheme.colorScheme.surfaceColorAtElevation(1.dp) onDark
+                        MaterialTheme.colorScheme.surface
+                )
+                .padding(8.dp)
+                .alpha(alpha)
+    ) {
+        Column {
+            if (articleListImage.value && article.img != null) {
+                RYAsyncImage(
+                    modifier =
+                        Modifier.fillMaxWidth()
+                            .aspectRatio(1.2f)
+                            .clip(Shape20),
+                    data = article.img,
+                    scale = Scale.FILL,
+                    precision = Precision.INEXACT,
+                    size = SIZE_1000,
+                    contentScale = ContentScale.Crop,
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+            }
+
+            Text(
+                text = article.title,
+                color = MaterialTheme.colorScheme.onSurface,
+                style = MaterialTheme.typography.titleSmall.merge(lineHeight = 20.sp),
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (articleListFeedName.value) {
+                    Text(
+                        modifier = Modifier.weight(1f),
+                        text = feed.name,
+                        color = MaterialTheme.colorScheme.tertiary,
+                        style = MaterialTheme.typography.labelSmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (article.isStarred) {
+                        StarredIcon(modifier = Modifier.size(14.dp))
+                    }
+                    if (articleListDate.value) {
+                        Text(
+                            text = article.dateString ?: "",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.labelSmall,
+                            maxLines = 1,
+                        )
+                    }
+                }
+            }
+        }
+
+        if (isMenuEnabled) {
+            AnimatedDropdownMenu(
+                modifier = Modifier.padding(horizontal = 12.dp),
+                expanded = isMenuExpanded,
+                onDismissRequest = { isMenuExpanded = false },
+                offset = menuOffset,
+            ) {
+                ArticleItemMenuContent(
+                    articleWithFeed = articleWithFeed,
+                    isStarred = article.isStarred,
+                    isRead = !isUnread,
+                    onToggleStarred = onToggleStarred,
+                    onToggleRead = onToggleRead,
+                    onMarkAboveAsRead = onMarkAboveAsRead,
+                    onMarkBelowAsRead = onMarkBelowAsRead,
+                    onShare = onShare,
+                ) {
+                    isMenuExpanded = false
+                }
+            }
+        }
+    }
 }
 
 @OptIn(ExperimentalFoundationApi::class)

@@ -29,6 +29,7 @@ import me.ash.reader.domain.service.RssService
 import me.ash.reader.infrastructure.android.AndroidStringsHelper
 import me.ash.reader.infrastructure.di.ApplicationScope
 import me.ash.reader.infrastructure.di.IODispatcher
+import me.ash.reader.infrastructure.preference.FlowArticleListViewModePreference
 import me.ash.reader.infrastructure.preference.SettingsProvider
 
 class ArticlePagingListUseCase
@@ -69,10 +70,13 @@ constructor(
     init {
         applicationScope.launch(ioDispatcher) {
             filterStateUseCase.filterStateFlow
-                .combine(accountService.currentAccountIdFlow) { filterState, accountId ->
+                .combine(accountService.currentAccountIdFlow) { filterState, _ ->
                     filterState
                 }
-                .collect { filterState ->
+                .combine(settingsProvider.settingsFlow) { filterState, settings ->
+                    filterState to settings.flowArticleListViewMode
+                }
+                .collect { (filterState, viewMode) ->
                     val searchContent = filterState.searchContent
 
                     mutablePagerFlow.value =
@@ -108,7 +112,13 @@ constructor(
                                     }
                                 }
                                 .flow
-                                .map { it.mapPagingFlowItem(androidStringsHelper) }
+                                .map {
+                                    it.mapPagingFlowItem(
+                                        androidStringsHelper = androidStringsHelper,
+                                        includeDateSeparators =
+                                            viewMode != FlowArticleListViewModePreference.Gallery,
+                                    )
+                                }
                                 .cachedIn(applicationScope),
                             filterState = filterState,
                         )

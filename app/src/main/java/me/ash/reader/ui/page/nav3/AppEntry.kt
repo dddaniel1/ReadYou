@@ -15,6 +15,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.viewmodel.navigation3.rememberViewModelStoreNavEntryDecorator
 import androidx.navigation3.runtime.NavBackStack
@@ -23,6 +25,7 @@ import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.ui.LocalNavAnimatedContentScope
 import androidx.navigation3.ui.NavDisplay
+import androidx.window.core.layout.WindowSizeClass
 import kotlinx.coroutines.delay
 import me.ash.reader.ui.motion.materialSharedAxisXIn
 import me.ash.reader.ui.motion.materialSharedAxisXOut
@@ -69,7 +72,15 @@ fun AppEntry(backStack: NavBackStack<NavKey>) {
         if (backStack.size == 1) backStack[0] = Route.Feeds else backStack.removeLastOrNull()
     }
 
-    val scaffoldDirective = calculatePaneScaffoldDirective(currentWindowAdaptiveInfo())
+    val windowAdaptiveInfo = currentWindowAdaptiveInfo()
+    val baseScaffoldDirective = calculatePaneScaffoldDirective(windowAdaptiveInfo)
+    val screenWidthDp = LocalConfiguration.current.screenWidthDp
+    val scaffoldDirective =
+        if (windowAdaptiveInfo.windowSizeClass.minWidthDp < WindowSizeClass.WIDTH_DP_MEDIUM_LOWER_BOUND) {
+            baseScaffoldDirective.copy(defaultPanePreferredWidth = screenWidthDp.dp)
+        } else {
+            baseScaffoldDirective
+        }
 
     val navigator =
         rememberListDetailPaneScaffoldNavigator<ArticleData>(

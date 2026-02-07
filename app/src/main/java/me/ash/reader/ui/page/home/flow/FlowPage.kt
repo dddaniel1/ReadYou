@@ -15,6 +15,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
@@ -28,13 +29,19 @@ import androidx.compose.foundation.layout.windowInsetsBottomHeight
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyGridState
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.material.ExperimentalMaterialApi
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.DoneAll
+import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.ViewList
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FabPosition
 import androidx.compose.material3.LargeTopAppBar
@@ -67,6 +74,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.paging.compose.LazyPagingItems
 import androidx.paging.compose.collectAsLazyPagingItems
+import androidx.paging.compose.itemContentType
+import androidx.paging.compose.itemKey
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
@@ -87,15 +96,15 @@ import me.ash.reader.infrastructure.preference.LocalOpenLinkSpecificBrowser
 import me.ash.reader.infrastructure.preference.LocalSettings
 import me.ash.reader.infrastructure.preference.LocalSharedContent
 import me.ash.reader.infrastructure.preference.LocalSortUnreadArticles
+import me.ash.reader.infrastructure.preference.LocalFlowArticleListViewMode
+import me.ash.reader.infrastructure.preference.FlowArticleListViewModePreference
 import me.ash.reader.infrastructure.preference.PullToLoadNextFeedPreference
 import me.ash.reader.infrastructure.preference.SortUnreadArticlesPreference
 import me.ash.reader.ui.component.FilterBar
 import me.ash.reader.ui.component.base.FeedbackIconButton
 import me.ash.reader.ui.component.base.RYExtensibleVisibility
 import me.ash.reader.ui.component.base.RYScaffold
-import me.ash.reader.ui.component.scrollbar.VerticalScrollIndicatorFactory
 import me.ash.reader.ui.component.scrollbar.drawVerticalScrollIndicator
-import me.ash.reader.ui.component.scrollbar.scrollIndicator
 import me.ash.reader.ui.ext.collectAsStateValue
 import me.ash.reader.ui.ext.openURL
 import me.ash.reader.ui.motion.Direction
@@ -126,6 +135,7 @@ fun FlowPage(
     val articleListTonalElevation = LocalFlowArticleListTonalElevation.current
     val articleListFeedIcon = LocalFlowArticleListFeedIcon.current
     val articleListDateStickyHeader = LocalFlowArticleListDateStickyHeader.current
+    val articleListViewMode = LocalFlowArticleListViewMode.current
     val topBarTonalElevation = LocalFlowTopBarTonalElevation.current
     val filterBarStyle = LocalFlowFilterBarStyle.current
     val filterBarPadding = LocalFlowFilterBarPadding.current
@@ -148,6 +158,9 @@ fun FlowPage(
     val filterUiState = pagerData.filterState
 
     val listState = rememberSaveable(pagerData, saver = LazyListState.Saver) { LazyListState(0, 0) }
+    val gridState = rememberSaveable(pagerData, saver = LazyGridState.Saver) { LazyGridState(0, 0) }
+
+    val isGalleryMode = articleListViewMode == FlowArticleListViewModePreference.Gallery
 
     val isTopBarElevated = topBarTonalElevation.value > 0
     val scrolledTopBarContainerColor =
@@ -171,8 +184,11 @@ fun FlowPage(
     val settleSpec = remember { spring<Float>(dampingRatio = Spring.DampingRatioLowBouncy) }
 
     val lastVisibleIndex =
-        remember(listState) {
-            snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index }
+        remember(listState, gridState, isGalleryMode) {
+            snapshotFlow {
+                    if (isGalleryMode) gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index
+                    else listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index
+                }
                 .filterNotNull()
         }
 
@@ -280,7 +296,11 @@ fun FlowPage(
 
                 if (index != -1) {
                     scrollAppBarToCollapsed()
-                    listState.animateScrollToItem(index, scrollOffset = -200)
+                    if (isGalleryMode) {
+                        gridState.animateScrollToItem(index)
+                    } else {
+                        listState.animateScrollToItem(index, scrollOffset = -200)
+                    }
                 }
             }
         }
@@ -298,7 +318,11 @@ fun FlowPage(
 
                 if (index != -1) {
                     snapAppBarToCollapsed()
-                    listState.requestScrollToItem(index, scrollOffset = -400)
+                    if (isGalleryMode) {
+                        gridState.requestScrollToItem(index)
+                    } else {
+                        listState.requestScrollToItem(index, scrollOffset = -400)
+                    }
                 }
             }
         }
@@ -327,8 +351,15 @@ fun FlowPage(
                             Modifier.clickable(
                                 onClick = {
                                     scope.launch {
-                                        if (listState.firstVisibleItemIndex != 0) {
-                                            listState.animateScrollToItem(0)
+                                        val index =
+                                            if (isGalleryMode) gridState.firstVisibleItemIndex
+                                            else listState.firstVisibleItemIndex
+                                        if (index != 0) {
+                                            if (isGalleryMode) {
+                                                gridState.animateScrollToItem(0)
+                                            } else {
+                                                listState.animateScrollToItem(0)
+                                            }
                                         }
                                     }
                                 },
@@ -393,8 +424,15 @@ fun FlowPage(
                                     } else {
                                         scope
                                             .launch {
-                                                if (listState.firstVisibleItemIndex != 0) {
-                                                    listState.animateScrollToItem(0)
+                                                val index =
+                                                    if (isGalleryMode) gridState.firstVisibleItemIndex
+                                                    else listState.firstVisibleItemIndex
+                                                if (index != 0) {
+                                                    if (isGalleryMode) {
+                                                        gridState.animateScrollToItem(0)
+                                                    } else {
+                                                        listState.animateScrollToItem(0)
+                                                    }
                                                 }
                                             }
                                             .invokeOnCompletion {
@@ -419,8 +457,15 @@ fun FlowPage(
                                 } else {
                                     scope
                                         .launch {
-                                            if (listState.firstVisibleItemIndex != 0) {
-                                                listState.animateScrollToItem(0)
+                                            val index =
+                                                if (isGalleryMode) gridState.firstVisibleItemIndex
+                                                else listState.firstVisibleItemIndex
+                                            if (index != 0) {
+                                                if (isGalleryMode) {
+                                                    gridState.animateScrollToItem(0)
+                                                } else {
+                                                    listState.animateScrollToItem(0)
+                                                }
                                             }
                                         }
                                         .invokeOnCompletion {
@@ -431,6 +476,21 @@ fun FlowPage(
                                                 focusRequester.requestFocus()
                                             }
                                         }
+                                }
+                            }
+                            FeedbackIconButton(
+                                imageVector =
+                                    if (isGalleryMode) Icons.Rounded.ViewList
+                                    else Icons.Rounded.GridView,
+                                contentDescription =
+                                    if (isGalleryMode) stringResource(R.string.list_view)
+                                    else stringResource(R.string.gallery_view),
+                                tint = MaterialTheme.colorScheme.onSurface,
+                            ) {
+                                if (isGalleryMode) {
+                                    FlowArticleListViewModePreference.List.put(context, scope)
+                                } else {
+                                    FlowArticleListViewModePreference.Gallery.put(context, scope)
                                 }
                             }
                         },
@@ -523,12 +583,21 @@ fun FlowPage(
                     val pagingItems = pager.collectAsLazyPagingItems().also { pagingItems = it }
 
                     if (markAsReadOnScroll && filterState.filter.isUnread()) {
-                        LaunchedEffect(listState.isScrollInProgress) {
-                            if (!listState.isScrollInProgress) {
-                                val firstItemKey =
-                                    listState.layoutInfo.visibleItemsInfo
-                                        .firstOrNull { it.contentType == CONTENT_TYPE_ARTICLE }
-                                        ?.key
+                        val isScrollInProgress =
+                            if (isGalleryMode) gridState.isScrollInProgress
+                            else listState.isScrollInProgress
+                        LaunchedEffect(isScrollInProgress) {
+                            if (!isScrollInProgress) {
+                                 val firstItemKey =
+                                    if (isGalleryMode) {
+                                        gridState.layoutInfo.visibleItemsInfo.firstOrNull {
+                                            it.contentType == CONTENT_TYPE_ARTICLE
+                                        }?.key
+                                    } else {
+                                        listState.layoutInfo.visibleItemsInfo.firstOrNull {
+                                            it.contentType == CONTENT_TYPE_ARTICLE
+                                        }?.key
+                                    }
                                 val items = mutableListOf<ArticleWithFeed>()
                                 var found = false
                                 val itemCount = pagingItems.itemCount
@@ -564,14 +633,19 @@ fun FlowPage(
                     }
 
                     val listState = remember(pager) { listState }
+                    val gridState = remember(pager) { gridState }
 
                     val isSyncing by rememberUpdatedState(isSyncing)
 
-                    LaunchedEffect(pagingItems) {
+                    LaunchedEffect(pagingItems, isGalleryMode) {
                         snapshotFlow { pagingItems.loadState.isIdle }
                             .collect {
                                 if (isSyncing) {
-                                    listState.scrollToItem(0)
+                                    if (isGalleryMode) {
+                                        gridState.scrollToItem(0)
+                                    } else {
+                                        listState.scrollToItem(0)
+                                    }
                                 }
                             }
                     }
@@ -638,69 +712,172 @@ fun FlowPage(
                             .also { currentPullToLoadState = it }
 
                     Box(modifier = Modifier.fillMaxSize()) {
-                        LazyColumn(
-                            modifier =
-                                Modifier.pullToLoad(
-                                        state = pullToLoadState,
-                                        enabled = true,
-                                        contentOffsetY = { fraction ->
-                                            if (fraction > 0f) {
-                                                (fraction * ContentOffsetMultiple * 1.5f)
-                                                    .dp
-                                                    .roundToPx()
-                                            } else {
-                                                (fraction * ContentOffsetMultiple * 2f)
-                                                    .dp
-                                                    .roundToPx()
+                        if (isGalleryMode) {
+                            LazyVerticalGrid(
+                                modifier =
+                                    Modifier.pullToLoad(
+                                            state = pullToLoadState,
+                                            enabled = true,
+                                            contentOffsetY = { fraction ->
+                                                if (fraction > 0f) {
+                                                    (fraction * ContentOffsetMultiple * 1.5f)
+                                                        .dp
+                                                        .roundToPx()
+                                                } else {
+                                                    (fraction * ContentOffsetMultiple * 2f)
+                                                        .dp
+                                                        .roundToPx()
+                                                }
+                                            },
+                                            onScroll = {
+                                                if (it < -10f) {
+                                                    markAsRead = false
+                                                }
+                                            },
+                                        )
+                                        .nestedScroll(scrollBehavior.nestedScrollConnection)
+                                        .fillMaxSize(),
+                                state = gridState,
+                                columns = GridCells.Fixed(2),
+                                contentPadding = PaddingValues(2.dp),
+                            ) {
+                                items(
+                                    count = pagingItems.itemCount,
+                                    key =
+                                        pagingItems.itemKey { item ->
+                                            when (item) {
+                                                is ArticleFlowItem.Article ->
+                                                    item.articleWithFeed.article.id
+                                                is ArticleFlowItem.Date -> item.date
                                             }
                                         },
-                                        onScroll = {
-                                            if (it < -10f) {
-                                                markAsRead = false
+                                    contentType =
+                                        pagingItems.itemContentType { item ->
+                                            when (item) {
+                                                is ArticleFlowItem.Article -> CONTENT_TYPE_ARTICLE
+                                                is ArticleFlowItem.Date -> CONTENT_TYPE_DATE_HEADER
                                             }
                                         },
-                                    )
-                                    .nestedScroll(scrollBehavior.nestedScrollConnection)
-                                    .fillMaxSize()
-                                    .drawVerticalScrollIndicator(listState),
-                            state = listState,
-                        ) {
-                            ArticleList(
-                                pagingItems = pagingItems,
-                                diffMap = viewModel.diffMapHolder.diffMap,
-                                isShowFeedIcon = articleListFeedIcon.value,
-                                isShowStickyHeader = articleListDateStickyHeader.value,
-                                articleListTonalElevation = articleListTonalElevation.value,
-                                isSwipeEnabled = { listState.isScrollInProgress },
-                                onClick = { articleWithFeed, index ->
-                                    if (articleWithFeed.feed.isBrowser) {
-                                        viewModel.diffMapHolder.updateDiff(
-                                            articleWithFeed,
-                                            isUnread = false,
-                                        )
-                                        context.openURL(
-                                            articleWithFeed.article.link,
-                                            openLink,
-                                            openLinkSpecificBrowser,
-                                        )
-                                    } else {
-                                        navigateToArticle(articleWithFeed.article.id, index)
+                                    span = { index ->
+                                        when (pagingItems[index]) {
+                                            is ArticleFlowItem.Article -> GridItemSpan(1)
+                                            else -> GridItemSpan(2)
+                                        }
+                                    },
+                                ) { index ->
+                                    when (val item = pagingItems[index]) {
+                                        is ArticleFlowItem.Article -> {
+                                            ArticleGalleryItem(
+                                                modifier = Modifier.padding(1.dp),
+                                                articleWithFeed = item.articleWithFeed,
+                                                isUnread =
+                                                    viewModel.diffMapHolder
+                                                        .diffMap[item.articleWithFeed.article.id]
+                                                        ?.isUnread
+                                                        ?: item.articleWithFeed.article.isUnread,
+                                                onClick = {
+                                                    if (it.feed.isBrowser) {
+                                                        viewModel.diffMapHolder.updateDiff(
+                                                            it,
+                                                            isUnread = false,
+                                                        )
+                                                        context.openURL(
+                                                            it.article.link,
+                                                            openLink,
+                                                            openLinkSpecificBrowser,
+                                                        )
+                                                    } else {
+                                                        navigateToArticle(it.article.id, index)
+                                                    }
+                                                },
+                                                onToggleStarred = onToggleStarred,
+                                                onToggleRead = onToggleRead,
+                                                onMarkAboveAsRead = onMarkAboveAsRead,
+                                                onMarkBelowAsRead = onMarkBelowAsRead,
+                                                onShare = onShare,
+                                            )
+                                        }
+
+                                        else -> {
+                                            Spacer(modifier = Modifier.height(0.dp))
+                                        }
                                     }
-                                },
-                                onToggleStarred = onToggleStarred,
-                                onToggleRead = onToggleRead,
-                                onMarkAboveAsRead = onMarkAboveAsRead,
-                                onMarkBelowAsRead = onMarkBelowAsRead,
-                                onShare = onShare,
-                            )
-                            item {
-                                Spacer(modifier = Modifier.height(128.dp))
-                                Spacer(
-                                    modifier =
-                                        Modifier.windowInsetsBottomHeight(
-                                            WindowInsets.navigationBars
+                                }
+                                item {
+                                    Spacer(modifier = Modifier.height(128.dp))
+                                    Spacer(
+                                        modifier =
+                                            Modifier.windowInsetsBottomHeight(
+                                                WindowInsets.navigationBars
+                                            )
+                                    )
+                                }
+                            }
+                        } else {
+                            LazyColumn(
+                                modifier =
+                                    Modifier.pullToLoad(
+                                            state = pullToLoadState,
+                                            enabled = true,
+                                            contentOffsetY = { fraction ->
+                                                if (fraction > 0f) {
+                                                    (fraction * ContentOffsetMultiple * 1.5f)
+                                                        .dp
+                                                        .roundToPx()
+                                                } else {
+                                                    (fraction * ContentOffsetMultiple * 2f)
+                                                        .dp
+                                                        .roundToPx()
+                                                }
+                                            },
+                                            onScroll = {
+                                                if (it < -10f) {
+                                                    markAsRead = false
+                                                }
+                                            },
                                         )
+                                        .nestedScroll(scrollBehavior.nestedScrollConnection)
+                                        .fillMaxSize()
+                                        .drawVerticalScrollIndicator(listState),
+                                state = listState,
+                            ) {
+                                ArticleList(
+                                    pagingItems = pagingItems,
+                                    diffMap = viewModel.diffMapHolder.diffMap,
+                                    isShowFeedIcon = articleListFeedIcon.value,
+                                    isShowStickyHeader = articleListDateStickyHeader.value,
+                                    articleListTonalElevation = articleListTonalElevation.value,
+                                    isSwipeEnabled = { listState.isScrollInProgress },
+                                    onClick = { articleWithFeed, index ->
+                                        if (articleWithFeed.feed.isBrowser) {
+                                            viewModel.diffMapHolder.updateDiff(
+                                                articleWithFeed,
+                                                isUnread = false,
+                                            )
+                                            context.openURL(
+                                                articleWithFeed.article.link,
+                                                openLink,
+                                                openLinkSpecificBrowser,
+                                            )
+                                        } else {
+                                            navigateToArticle(articleWithFeed.article.id, index)
+                                        }
+                                    },
+                                    onToggleStarred = onToggleStarred,
+                                    onToggleRead = onToggleRead,
+                                    onMarkAboveAsRead = onMarkAboveAsRead,
+                                    onMarkBelowAsRead = onMarkBelowAsRead,
+                                    onShare = onShare,
                                 )
+                                item {
+                                    Spacer(modifier = Modifier.height(128.dp))
+                                    Spacer(
+                                        modifier =
+                                            Modifier.windowInsetsBottomHeight(
+                                                WindowInsets.navigationBars
+                                            )
+                                    )
+                                }
                             }
                         }
                     }
