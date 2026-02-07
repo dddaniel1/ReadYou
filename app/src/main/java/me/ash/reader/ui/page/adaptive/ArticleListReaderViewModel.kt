@@ -48,6 +48,7 @@ import me.ash.reader.infrastructure.preference.PullToLoadNextFeedPreference
 import me.ash.reader.infrastructure.preference.SettingsProvider
 import me.ash.reader.infrastructure.rss.ReaderCacheHelper
 import me.ash.reader.ui.page.home.reading.podcast.extractPodcastMediaUrl
+import me.ash.reader.ui.page.home.reading.video.extractVideoMediaUrl
 import timber.log.Timber
 
 private const val TAG = "FlowViewModel"
@@ -312,6 +313,7 @@ constructor(
                             link = article.link,
                             publishedDate = article.date,
                             podcastUrl = extractPodcastMediaUrl(article.rawDescription),
+                            videoUrl = extractVideoMediaUrl(article.rawDescription),
                         )
                         .prefetchArticleId()
                         .renderContent(this)
@@ -480,6 +482,7 @@ data class ReaderState(
     val author: String? = null,
     val link: String? = null,
     val podcastUrl: String? = null,
+    val videoUrl: String? = null,
     val publishedDate: Date = Date(0L),
     val content: ContentState = Loading,
     val listIndex: Int? = null,

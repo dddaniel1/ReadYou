@@ -47,6 +47,7 @@ fun Content(
     listState: LazyListState,
     isLoading: Boolean,
     contentPadding: PaddingValues = PaddingValues(),
+    videoPlayer: (@Composable () -> Unit)? = null,
     podcastPlayer: (@Composable () -> Unit)? = null,
     onImageClick: ((imgUrl: String, altText: String) -> Unit)? = null,
 ) {
@@ -69,6 +70,10 @@ fun Content(
                         publishedDate = publishedDate,
                         modifier = Modifier.roundClick { link?.let { uriHandler.openUri(it) } },
                     )
+                    if (videoPlayer != null) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        videoPlayer.invoke()
+                    }
                     if (podcastPlayer != null) {
                         Spacer(modifier = Modifier.height(8.dp))
                         podcastPlayer.invoke()

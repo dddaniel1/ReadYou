@@ -55,6 +55,7 @@ import me.ash.reader.ui.page.adaptive.NavigationAction
 import me.ash.reader.ui.page.adaptive.ReaderState
 import me.ash.reader.ui.page.home.reading.podcast.PodcastInlinePlayer
 import me.ash.reader.ui.page.home.reading.tts.TtsButton
+import me.ash.reader.ui.page.home.reading.video.VideoInlinePlayer
 
 private const val UPWARD = 1
 private const val DOWNWARD = -1
@@ -263,6 +264,9 @@ fun ReadingPage(
                                             isLoading = content is ReaderState.Loading,
                                             scrollState = scrollState,
                                             listState = listState,
+                                            videoPlayer = {
+                                                VideoInlinePlayer(videoUrl = readerState.videoUrl)
+                                            },
                                             podcastPlayer = {
                                                 PodcastInlinePlayer(
                                                     state =
