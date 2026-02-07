@@ -47,6 +47,7 @@ fun Content(
     listState: LazyListState,
     isLoading: Boolean,
     contentPadding: PaddingValues = PaddingValues(),
+    podcastPlayer: (@Composable () -> Unit)? = null,
     onImageClick: ((imgUrl: String, altText: String) -> Unit)? = null,
 ) {
     val context = LocalContext.current
@@ -68,6 +69,10 @@ fun Content(
                         publishedDate = publishedDate,
                         modifier = Modifier.roundClick { link?.let { uriHandler.openUri(it) } },
                     )
+                    if (podcastPlayer != null) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        podcastPlayer.invoke()
+                    }
                 }
             }
         }

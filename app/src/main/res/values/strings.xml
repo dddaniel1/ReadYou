@@ -51,6 +51,8 @@
     <string name="all_allow_notification_toast">Notifications from the \"%1$s\" group are allowed</string>
     <string name="all_deny_notification_toast">Notifications from the \"%1$s\" group are denied</string>
     <string name="parse_full_content">Parse full content</string>
+    <string name="play_podcast">Play podcast</string>
+    <string name="pause_podcast">Pause podcast</string>
     <string name="all_parse_full_content_tips">Full content parsing of all articles in the \"%1$s\" group</string>
     <string name="all_parse_full_content_toast">Full content parsing of all articles in the \"%1$s\" group is allowed</string>
     <string name="all_deny_parse_full_content_toast">Full content parsing of all articles in the \"%1$s\" group is denied</string>

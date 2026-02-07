@@ -53,6 +53,7 @@ import me.ash.reader.ui.ext.showToast
 import me.ash.reader.ui.page.adaptive.ArticleListReaderViewModel
 import me.ash.reader.ui.page.adaptive.NavigationAction
 import me.ash.reader.ui.page.adaptive.ReaderState
+import me.ash.reader.ui.page.home.reading.podcast.PodcastInlinePlayer
 import me.ash.reader.ui.page.home.reading.tts.TtsButton
 
 private const val UPWARD = 1
@@ -262,6 +263,16 @@ fun ReadingPage(
                                             isLoading = content is ReaderState.Loading,
                                             scrollState = scrollState,
                                             listState = listState,
+                                            podcastPlayer = {
+                                                PodcastInlinePlayer(
+                                                    state =
+                                                        viewModel.podcastPlayerManager.stateFlow
+                                                            .collectAsStateValue(),
+                                                    podcastUrl = readerState.podcastUrl,
+                                                    onToggle = { viewModel.togglePodcastPlayback(it) },
+                                                    onSeek = { viewModel.seekPodcast(it) },
+                                                )
+                                            },
                                             onImageClick = { imgUrl, altText ->
                                                 currentImageData = ImageData(imgUrl, altText)
                                                 showFullScreenImageViewer = true
@@ -302,6 +313,7 @@ fun ReadingPage(
                         },
                         onBoldCharacters = { (!boldCharacters).put(context, coroutineScope) },
                         onReadAloud = {
+                            viewModel.podcastPlayerManager.stop()
                             viewModel.textToSpeechManager.readHtml(
                                 readerState.content.text ?: return@BottomBar
                             )
@@ -315,6 +327,7 @@ fun ReadingPage(
                                         }
 
                                         TextToSpeechManager.State.Idle -> {
+                                            viewModel.podcastPlayerManager.stop()
                                             viewModel.textToSpeechManager.readHtml(
                                                 readerState.content.text ?: ""
                                             )

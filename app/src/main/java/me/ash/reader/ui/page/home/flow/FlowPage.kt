@@ -279,6 +279,7 @@ fun FlowPage(
         }
 
     val readerState = viewModel.readerStateStateFlow.collectAsStateValue()
+    val podcastPlayerState = viewModel.podcastPlayerManager.stateFlow.collectAsStateValue()
 
     var pagingItems: LazyPagingItems<ArticleFlowItem>? by remember { mutableStateOf(null) }
 
@@ -770,6 +771,7 @@ fun FlowPage(
                                             ArticleGalleryItem(
                                                 modifier = Modifier.padding(1.dp),
                                                 articleWithFeed = item.articleWithFeed,
+                                                podcastPlayerState = podcastPlayerState,
                                                 isUnread =
                                                     viewModel.diffMapHolder
                                                         .diffMap[item.articleWithFeed.article.id]
@@ -792,6 +794,9 @@ fun FlowPage(
                                                 },
                                                 onToggleStarred = onToggleStarred,
                                                 onToggleRead = onToggleRead,
+                                                onPodcastClick = { url ->
+                                                    viewModel.togglePodcastPlayback(url)
+                                                },
                                                 onMarkAboveAsRead = onMarkAboveAsRead,
                                                 onMarkBelowAsRead = onMarkBelowAsRead,
                                                 onShare = onShare,
@@ -844,6 +849,7 @@ fun FlowPage(
                                 ArticleList(
                                     pagingItems = pagingItems,
                                     diffMap = viewModel.diffMapHolder.diffMap,
+                                    podcastPlayerState = podcastPlayerState,
                                     isShowFeedIcon = articleListFeedIcon.value,
                                     isShowStickyHeader = articleListDateStickyHeader.value,
                                     articleListTonalElevation = articleListTonalElevation.value,
@@ -865,6 +871,9 @@ fun FlowPage(
                                     },
                                     onToggleStarred = onToggleStarred,
                                     onToggleRead = onToggleRead,
+                                    onPodcastClick = { url ->
+                                        viewModel.togglePodcastPlayback(url)
+                                    },
                                     onMarkAboveAsRead = onMarkAboveAsRead,
                                     onMarkBelowAsRead = onMarkBelowAsRead,
                                     onShare = onShare,

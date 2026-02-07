@@ -40,12 +40,14 @@ import me.ash.reader.domain.service.LocalRssService
 import me.ash.reader.domain.service.RssService
 import me.ash.reader.domain.service.SyncWorker
 import me.ash.reader.infrastructure.android.AndroidImageDownloader
+import me.ash.reader.infrastructure.android.PodcastPlayerManager
 import me.ash.reader.infrastructure.android.TextToSpeechManager
 import me.ash.reader.infrastructure.di.ApplicationScope
 import me.ash.reader.infrastructure.di.IODispatcher
 import me.ash.reader.infrastructure.preference.PullToLoadNextFeedPreference
 import me.ash.reader.infrastructure.preference.SettingsProvider
 import me.ash.reader.infrastructure.rss.ReaderCacheHelper
+import me.ash.reader.ui.page.home.reading.podcast.extractPodcastMediaUrl
 import timber.log.Timber
 
 private const val TAG = "FlowViewModel"
@@ -64,6 +66,7 @@ constructor(
     private val settingsProvider: SettingsProvider,
     private val readerCacheHelper: ReaderCacheHelper,
     val textToSpeechManager: TextToSpeechManager,
+    val podcastPlayerManager: PodcastPlayerManager,
     private val imageDownloader: AndroidImageDownloader,
     private val articleListUseCase: ArticlePagingListUseCase,
     workManager: WorkManager,
@@ -308,6 +311,7 @@ constructor(
                             author = article.author,
                             link = article.link,
                             publishedDate = article.date,
+                            podcastUrl = extractPodcastMediaUrl(article.rawDescription),
                         )
                         .prefetchArticleId()
                         .renderContent(this)
@@ -317,8 +321,18 @@ constructor(
     }
 
     fun clearReadingData() {
+        podcastPlayerManager.stop()
         _readingUiState.update { ReadingUiState() }
         _readerState.update { ReaderState() }
+    }
+
+    fun togglePodcastPlayback(url: String) {
+        textToSpeechManager.stop()
+        podcastPlayerManager.toggle(url)
+    }
+
+    fun seekPodcast(positionMs: Int) {
+        podcastPlayerManager.seekTo(positionMs)
     }
 
     suspend fun ReaderState.renderContent(articleWithFeed: ArticleWithFeed): ReaderState {
@@ -444,6 +458,11 @@ constructor(
             imageDownloader.downloadImage(url).onSuccess(onSuccess).onFailure(onFailure)
         }
     }
+
+    override fun onCleared() {
+        podcastPlayerManager.stop()
+        super.onCleared()
+    }
 }
 
 data class FlowUiState(val pagerData: PagerData, val nextFilterState: FilterState? = null)
@@ -460,6 +479,7 @@ data class ReaderState(
     val title: String? = null,
     val author: String? = null,
     val link: String? = null,
+    val podcastUrl: String? = null,
     val publishedDate: Date = Date(0L),
     val content: ContentState = Loading,
     val listIndex: Int? = null,

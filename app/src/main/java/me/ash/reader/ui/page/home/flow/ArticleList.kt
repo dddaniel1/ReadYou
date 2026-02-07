@@ -12,18 +12,21 @@ import androidx.paging.compose.itemKey
 import me.ash.reader.domain.data.Diff
 import me.ash.reader.domain.model.article.ArticleFlowItem
 import me.ash.reader.domain.model.article.ArticleWithFeed
+import me.ash.reader.infrastructure.android.PodcastPlayerManager
 
 @Suppress("FunctionName")
 @OptIn(ExperimentalFoundationApi::class)
 fun LazyListScope.ArticleList(
     pagingItems: LazyPagingItems<ArticleFlowItem>,
     diffMap: Map<String, Diff>,
+    podcastPlayerState: PodcastPlayerManager.State,
     isShowFeedIcon: Boolean,
     isShowStickyHeader: Boolean,
     articleListTonalElevation: Int,
     isSwipeEnabled: () -> Boolean = { false },
     isMenuEnabled: Boolean = true,
     onClick: (ArticleWithFeed, Int) -> Unit = { _, _ -> },
+    onPodcastClick: (String) -> Unit = {},
     onToggleStarred: (ArticleWithFeed) -> Unit = {},
     onToggleRead: (ArticleWithFeed) -> Unit = {},
     onMarkAboveAsRead: ((ArticleWithFeed) -> Unit)? = null,
@@ -44,9 +47,11 @@ fun LazyListScope.ArticleList(
                     val article = item.articleWithFeed.article
                     SwipeableArticleItem(
                         articleWithFeed = item.articleWithFeed,
+                        podcastPlayerState = podcastPlayerState,
                         isUnread = diffMap[article.id]?.isUnread ?: article.isUnread,
                         articleListTonalElevation = articleListTonalElevation,
                         onClick = { onClick(it, index) },
+                        onPodcastClick = onPodcastClick,
                         isSwipeEnabled = isSwipeEnabled,
                         isMenuEnabled = isMenuEnabled,
                         onToggleStarred = onToggleStarred,
@@ -78,9 +83,11 @@ fun LazyListScope.ArticleList(
                         val article = item.articleWithFeed.article
                         SwipeableArticleItem(
                             articleWithFeed = item.articleWithFeed,
+                            podcastPlayerState = podcastPlayerState,
                             isUnread = diffMap[article.id]?.isUnread ?: article.isUnread,
                             articleListTonalElevation = articleListTonalElevation,
                             onClick = { onClick(it, index) },
+                            onPodcastClick = onPodcastClick,
                             isSwipeEnabled = isSwipeEnabled,
                             isMenuEnabled = isMenuEnabled,
                             onToggleStarred = onToggleStarred,

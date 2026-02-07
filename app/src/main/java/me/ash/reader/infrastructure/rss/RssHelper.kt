@@ -34,6 +34,15 @@ import okio.IOException
 import org.jsoup.Jsoup
 
 val enclosureRegex = """<enclosure\s+url="([^"]+)"\s+type=".*"\s*/>""".toRegex()
+private val audioEnclosureRegex =
+    """<enclosure\s+url=(["'])(.*?)\1\s+type=(["'])audio/[^"']+\3\s*/?>"""
+        .toRegex(setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
+private val audioTagRegex =
+    """<audio[^>]*src=(["'])(.*?)\1[^>]*>"""
+        .toRegex(setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
+private val sourceAudioTagRegex =
+    """<source[^>]*src=(["'])(.*?)\1[^>]*type=(["'])audio/[^"']+\3[^>]*>"""
+        .toRegex(setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
 val imgRegex = """img.*?src=(["'])((?!data).*?)\1""".toRegex(RegexOption.DOT_MATCHES_ALL)
 
 /** Some operations on RSS. */
@@ -161,6 +170,9 @@ constructor(
             syndEntry.contents
                 .takeIf { it.isNotEmpty() }
                 ?.let { it.joinToString("\n") { it.value } }
+        val rawDescription = content ?: desc ?: ""
+        val podcastMediaUrl = findPodcastMediaUrl(syndEntry) ?: findPodcastMediaUrl(rawDescription)
+        val descriptionWithPodcast = rawDescription.withInjectedPodcastAudioTag(podcastMediaUrl)
         //        Log.i(
         //            "RLog",
         //            "request rss:\n" +
@@ -180,13 +192,45 @@ constructor(
                     ?: preDate,
             title = syndEntry.title.decodeHTML() ?: feed.name,
             author = syndEntry.author,
-            rawDescription = content ?: desc ?: "",
+            rawDescription = descriptionWithPodcast,
             shortDescription = Readability.parseToText(desc ?: content, syndEntry.link).take(280),
             //            fullContent = content,
             img = findThumbnail(syndEntry) ?: findThumbnail(content ?: desc),
             link = syndEntry.link ?: "",
             updateAt = preDate,
         )
+    }
+
+    private fun findPodcastMediaUrl(syndEntry: SyndEntry): String? {
+        val directEnclosure =
+            syndEntry.enclosures.firstOrNull {
+                it.url?.isNotBlank() == true &&
+                    (it.type?.startsWith("audio", ignoreCase = true) == true)
+            }
+        if (directEnclosure?.url?.isNotBlank() == true) {
+            return directEnclosure.url
+        }
+
+        val mediaModule = syndEntry.getModule(MediaModule.URI) as? MediaEntryModule
+        return mediaModule
+            ?.mediaContents
+            ?.firstOrNull {
+                val mediumIsAudio = it.medium?.equals("audio", ignoreCase = true) == true
+                val typeIsAudio = it.type?.startsWith("audio", ignoreCase = true) == true
+                mediumIsAudio || typeIsAudio
+            }
+            ?.reference
+            ?.let { it as? UrlReference }
+            ?.url
+            ?.toString()
+            ?.takeIf { it.isNotBlank() }
+    }
+
+    private fun findPodcastMediaUrl(text: String?): String? {
+        if (text.isNullOrBlank()) return null
+        return audioEnclosureRegex.find(text)?.groupValues?.getOrNull(2)
+            ?: audioTagRegex.find(text)?.groupValues?.getOrNull(2)
+            ?: sourceAudioTagRegex.find(text)?.groupValues?.getOrNull(2)
     }
 
     fun findThumbnail(syndEntry: SyndEntry): String? {
@@ -252,4 +296,10 @@ constructor(
 
     private suspend fun response(client: OkHttpClient, url: String): okhttp3.Response =
         client.newCall(Request.Builder().url(url).build()).executeAsync()
+}
+
+private fun String.withInjectedPodcastAudioTag(podcastUrl: String?): String {
+    if (podcastUrl.isNullOrBlank()) return this
+    if (contains(podcastUrl)) return this
+    return "$this<audio preload=\"none\" src=\"$podcastUrl\"></audio>"
 }

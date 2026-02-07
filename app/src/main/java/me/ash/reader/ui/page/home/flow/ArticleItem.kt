@@ -60,6 +60,7 @@ import coil.size.Precision
 import coil.size.Scale
 import me.ash.reader.R
 import me.ash.reader.domain.model.article.ArticleWithFeed
+import me.ash.reader.infrastructure.android.PodcastPlayerManager
 import me.ash.reader.infrastructure.preference.FlowArticleListDescPreference
 import me.ash.reader.infrastructure.preference.FlowArticleReadIndicatorPreference
 import me.ash.reader.infrastructure.preference.LocalArticleListSwipeEndAction
@@ -80,6 +81,8 @@ import me.ash.reader.ui.component.swipe.SwipeAction
 import me.ash.reader.ui.component.swipe.SwipeableActionsBox
 import me.ash.reader.ui.ext.requiresBidi
 import me.ash.reader.ui.ext.surfaceColorAtElevation
+import me.ash.reader.ui.page.home.reading.podcast.PodcastButton
+import me.ash.reader.ui.page.home.reading.podcast.extractPodcastMediaUrl
 import me.ash.reader.ui.page.settings.color.flow.generateArticleWithFeedPreview
 import me.ash.reader.ui.theme.Shape20
 import me.ash.reader.ui.theme.applyTextDirection
@@ -91,12 +94,15 @@ private const val TAG = "ArticleItem"
 fun ArticleItem(
     modifier: Modifier = Modifier,
     articleWithFeed: ArticleWithFeed,
+    podcastPlayerState: PodcastPlayerManager.State,
     isUnread: Boolean = articleWithFeed.article.isUnread,
     onClick: (ArticleWithFeed) -> Unit = {},
+    onPodcastClick: (String) -> Unit = {},
     onLongClick: (() -> Unit)? = null,
 ) {
     val feed = articleWithFeed.feed
     val article = articleWithFeed.article
+    val podcastUrl = remember(article.rawDescription) { extractPodcastMediaUrl(article.rawDescription) }
 
     ArticleItem(
         modifier = modifier,
@@ -106,8 +112,11 @@ fun ArticleItem(
         shortDescription = article.shortDescription,
         timeString = article.dateString,
         imgData = article.img,
+        podcastUrl = podcastUrl,
+        podcastPlayerState = podcastPlayerState,
         isStarred = article.isStarred,
         isUnread = isUnread,
+        onPodcastClick = onPodcastClick,
         onClick = { onClick(articleWithFeed) },
         onLongClick = onLongClick,
     )
@@ -118,9 +127,11 @@ fun ArticleItem(
 fun ArticleGalleryItem(
     modifier: Modifier = Modifier,
     articleWithFeed: ArticleWithFeed,
+    podcastPlayerState: PodcastPlayerManager.State,
     isUnread: Boolean = articleWithFeed.article.isUnread,
     isMenuEnabled: Boolean = true,
     onClick: (ArticleWithFeed) -> Unit = {},
+    onPodcastClick: (String) -> Unit = {},
     onToggleStarred: (ArticleWithFeed) -> Unit = {},
     onToggleRead: (ArticleWithFeed) -> Unit = {},
     onMarkAboveAsRead: ((ArticleWithFeed) -> Unit)? = null,
@@ -129,6 +140,7 @@ fun ArticleGalleryItem(
 ) {
     val feed = articleWithFeed.feed
     val article = articleWithFeed.article
+    val podcastUrl = remember(article.rawDescription) { extractPodcastMediaUrl(article.rawDescription) }
 
     val articleListFeedName = LocalFlowArticleListFeedName.current
     val articleListImage = LocalFlowArticleListImage.current
@@ -173,17 +185,27 @@ fun ArticleGalleryItem(
     ) {
         Column {
             if (articleListImage.value && article.img != null) {
-                RYAsyncImage(
-                    modifier =
-                        Modifier.fillMaxWidth()
-                            .aspectRatio(1.2f)
-                            .clip(Shape20),
-                    data = article.img,
-                    scale = Scale.FILL,
-                    precision = Precision.INEXACT,
-                    size = SIZE_1000,
-                    contentScale = ContentScale.Crop,
-                )
+                Box {
+                    RYAsyncImage(
+                        modifier =
+                            Modifier.fillMaxWidth()
+                                .aspectRatio(1.2f)
+                                .clip(Shape20),
+                        data = article.img,
+                        scale = Scale.FILL,
+                        precision = Precision.INEXACT,
+                        size = SIZE_1000,
+                        contentScale = ContentScale.Crop,
+                    )
+                    PodcastButton(
+                        modifier = Modifier.align(Alignment.TopEnd).padding(10.dp),
+                        state = podcastPlayerState,
+                        podcastUrl = podcastUrl,
+                        useOverlayStyle = true,
+                        iconSize = 18.dp,
+                        onClick = { podcastUrl?.let(onPodcastClick) },
+                    )
+                }
                 Spacer(modifier = Modifier.height(10.dp))
             }
 
@@ -261,8 +283,11 @@ fun ArticleItem(
     shortDescription: String = "",
     timeString: String? = null,
     imgData: Any? = null,
+    podcastUrl: String? = null,
+    podcastPlayerState: PodcastPlayerManager.State = PodcastPlayerManager.State.Idle,
     isStarred: Boolean = false,
     isUnread: Boolean = false,
+    onPodcastClick: (String) -> Unit = {},
     onClick: () -> Unit = {},
     onLongClick: (() -> Unit)? = null,
 ) {
@@ -416,14 +441,24 @@ fun ArticleItem(
 
             // Image
             if (imgData != null && articleListImage.value) {
-                RYAsyncImage(
-                    modifier = Modifier.padding(start = 10.dp).size(80.dp).clip(Shape20),
-                    data = imgData,
-                    scale = Scale.FILL,
-                    precision = Precision.INEXACT,
-                    size = SIZE_1000,
-                    contentScale = ContentScale.Crop,
-                )
+                Box(modifier = Modifier.padding(start = 10.dp).size(80.dp)) {
+                    RYAsyncImage(
+                        modifier = Modifier.fillMaxSize().clip(Shape20),
+                        data = imgData,
+                        scale = Scale.FILL,
+                        precision = Precision.INEXACT,
+                        size = SIZE_1000,
+                        contentScale = ContentScale.Crop,
+                    )
+                    PodcastButton(
+                        modifier = Modifier.align(Alignment.TopEnd).padding(4.dp).size(28.dp),
+                        state = podcastPlayerState,
+                        podcastUrl = podcastUrl,
+                        useOverlayStyle = true,
+                        iconSize = 14.dp,
+                        onClick = { podcastUrl?.let(onPodcastClick) },
+                    )
+                }
             }
         }
     }
@@ -450,9 +485,11 @@ private const val SwipeActionDelay = 300L
 @Composable
 fun SwipeableArticleItem(
     articleWithFeed: ArticleWithFeed,
+    podcastPlayerState: PodcastPlayerManager.State,
     isUnread: Boolean = articleWithFeed.article.isUnread,
     articleListTonalElevation: Int = 0,
     onClick: (ArticleWithFeed) -> Unit = {},
+    onPodcastClick: (String) -> Unit = {},
     isSwipeEnabled: () -> Boolean = { false },
     isMenuEnabled: Boolean = true,
     onToggleStarred: (ArticleWithFeed) -> Unit = {},
@@ -500,8 +537,10 @@ fun SwipeableArticleItem(
         ) {
             ArticleItem(
                 articleWithFeed = articleWithFeed,
+                podcastPlayerState = podcastPlayerState,
                 isUnread = isUnread,
                 onClick = onClick,
+                onPodcastClick = onPodcastClick,
                 onLongClick = onLongClick,
             )
             with(articleWithFeed.article) {
