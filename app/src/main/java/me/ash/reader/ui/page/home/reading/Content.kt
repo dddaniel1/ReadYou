@@ -1,5 +1,6 @@
 package me.ash.reader.ui.page.home.reading
 
+import android.text.TextUtils
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -46,6 +47,7 @@ fun Content(
     scrollState: ScrollState,
     listState: LazyListState,
     isLoading: Boolean,
+    translatedContent: String? = null,
     contentPadding: PaddingValues = PaddingValues(),
     videoPlayer: (@Composable () -> Unit)? = null,
     podcastPlayer: (@Composable () -> Unit)? = null,
@@ -58,6 +60,12 @@ fun Content(
     val textContentWidth = LocalTextContentWidth.current
     val maxWidthModifier = Modifier.widthIn(max = textContentWidth)
     val uriHandler = LocalUriHandler.current
+    val displayedContent =
+        if (translatedContent.isNullOrBlank()) {
+            content
+        } else {
+            translatedContent.toInlineBilingualHtml()
+        }
 
     val headline =
         @Composable {
@@ -107,7 +115,7 @@ fun Content(
 
                             RYWebView(
                                 modifier = Modifier.fillMaxSize(),
-                                content = content,
+                                content = displayedContent,
                                 refererDomain = link.extractDomain(),
                                 onImageClick = onImageClick,
                             )
@@ -139,7 +147,7 @@ fun Content(
                             context = context,
                             subheadUpperCase = subheadUpperCase.value,
                             link = link ?: "",
-                            content = content,
+                            content = displayedContent,
                             onImageClick = onImageClick,
                             onLinkClick = { uriHandler.openUri(it) },
                         )
@@ -154,5 +162,25 @@ fun Content(
                 }
             }
         }
+    }
+}
+
+private fun String.toInlineBilingualHtml(): String {
+    val escapedLines =
+        lineSequence()
+            .map { it.trimEnd() }
+            .map { line ->
+                if (line.isBlank()) {
+                    "<br/>"
+                } else {
+                    "<p>${TextUtils.htmlEncode(line)}</p>"
+                }
+            }
+            .toList()
+
+    return buildString {
+        append("<div>")
+        escapedLines.forEach { append(it) }
+        append("</div>")
     }
 }

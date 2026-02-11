@@ -51,8 +51,12 @@
     <string name="all_allow_notification_toast">Notifications from the \"%1$s\" group are allowed</string>
     <string name="all_deny_notification_toast">Notifications from the \"%1$s\" group are denied</string>
     <string name="parse_full_content">Parse full content</string>
+    <string name="translate_to_chinese">Translate to Chinese</string>
+    <string name="translated_chinese_title">Bilingual translation (EN/ZH)</string>
     <string name="play_podcast">Play podcast</string>
     <string name="pause_podcast">Pause podcast</string>
+    <string name="podcast_backward_10_seconds">Back 10 seconds</string>
+    <string name="podcast_forward_30_seconds">Forward 30 seconds</string>
     <string name="all_parse_full_content_tips">Full content parsing of all articles in the \"%1$s\" group</string>
     <string name="all_parse_full_content_toast">Full content parsing of all articles in the \"%1$s\" group is allowed</string>
     <string name="all_deny_parse_full_content_toast">Full content parsing of all articles in the \"%1$s\" group is denied</string>
@@ -390,4 +394,6 @@
     <string name="parse_full_content_desc">Fetch full articles from webpages</string>
     <string name="enable">Enable</string>
     <string name="disable">Disable</string>
+    <string name="sync_rss_progress">Syncing RSS: %1$d/%2$d</string>
+    <string name="sync_rss_current">Current: %1$s</string>
 </resources>

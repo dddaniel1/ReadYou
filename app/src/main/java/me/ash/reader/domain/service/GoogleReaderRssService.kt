@@ -224,11 +224,12 @@ constructor(
         accountId: Int,
         feedId: String?,
         groupId: String?,
+        progressReporter: SyncProgressReporter?,
     ): ListenableWorker.Result {
         return if (feedId != null) {
-            syncFeed(accountId, feedId)
+            syncFeed(accountId, feedId, progressReporter)
         } else {
-            sync(accountId)
+            sync(accountId, progressReporter)
         }
     }
 
@@ -252,11 +253,15 @@ constructor(
      * @link https://github.com/theoldreader/api
      */
     @OptIn(ExperimentalCoroutinesApi::class)
-    private suspend fun sync(accountId: Int): ListenableWorker.Result = coroutineScope {
+    private suspend fun sync(
+        accountId: Int,
+        progressReporter: SyncProgressReporter?,
+    ): ListenableWorker.Result = coroutineScope {
         val preTime = System.currentTimeMillis()
         val preDate = Date(preTime)
 
         try {
+            progressReporter?.onProgress("Cloud feeds", 0, 1)
             val account = accountService.getAccountById(accountId)
             requireNotNull(account) { "cannot find account" }
             check(
@@ -510,6 +515,7 @@ constructor(
                 .forEach { super.deleteFeed(it, true) }
 
             accountService.update(account.copy(updateAt = Date()))
+            progressReporter?.onProgress("Cloud feeds", 1, 1)
             ListenableWorker.Result.success()
         } catch (e: Exception) {
             Timber.tag("RLog").e(e, "On sync exception: ${e.message}")
@@ -523,7 +529,11 @@ constructor(
         }
     }
 
-    private suspend fun syncFeed(accountId: Int, feedId: String): ListenableWorker.Result =
+    private suspend fun syncFeed(
+        accountId: Int,
+        feedId: String,
+        progressReporter: SyncProgressReporter?,
+    ): ListenableWorker.Result =
         supervisorScope {
             val preTime = System.currentTimeMillis()
             val account = accountService.getAccountById(accountId)
@@ -537,6 +547,7 @@ constructor(
             val googleReaderAPI = getGoogleReaderAPI()
 
             val feed = feedDao.queryById(feedId)!!
+            progressReporter?.onProgress(feed.name, 0, 1)
 
             val localStarredIds =
                 articleDao
@@ -665,6 +676,7 @@ constructor(
 
             articleDao.insert(*items.toTypedArray())
             Timber.i("onCompletion: ${System.currentTimeMillis() - preTime}")
+            progressReporter?.onProgress(feed.name, 1, 1)
 
             ListenableWorker.Result.success()
         }

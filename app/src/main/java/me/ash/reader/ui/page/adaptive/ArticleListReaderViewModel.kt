@@ -47,6 +47,7 @@ import me.ash.reader.infrastructure.di.IODispatcher
 import me.ash.reader.infrastructure.preference.PullToLoadNextFeedPreference
 import me.ash.reader.infrastructure.preference.SettingsProvider
 import me.ash.reader.infrastructure.rss.ReaderCacheHelper
+import me.ash.reader.infrastructure.rss.TranslationHelper
 import me.ash.reader.ui.page.home.reading.podcast.extractPodcastMediaUrl
 import me.ash.reader.ui.page.home.reading.video.extractVideoMediaUrl
 import timber.log.Timber
@@ -66,6 +67,7 @@ constructor(
     private val groupWithFeedsListUseCase: GroupWithFeedsListUseCase,
     private val settingsProvider: SettingsProvider,
     private val readerCacheHelper: ReaderCacheHelper,
+    private val translationHelper: TranslationHelper,
     val textToSpeechManager: TextToSpeechManager,
     val podcastPlayerManager: PodcastPlayerManager,
     private val imageDownloader: AndroidImageDownloader,
@@ -135,12 +137,44 @@ constructor(
             .map { it.any { workInfo -> workInfo.state == WorkInfo.State.RUNNING } }
             .stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
+    private val _syncProgressFlow = MutableStateFlow(SyncProgressUiState())
+    val syncProgressFlow: StateFlow<SyncProgressUiState> = _syncProgressFlow.asStateFlow()
+
     private val _isSyncingFlow = MutableStateFlow(false)
     val isSyncingFlow = _isSyncingFlow.asStateFlow()
 
     init {
         viewModelScope.launch {
             syncWorkerStatusFlow.debounce(500L).collect { _isSyncingFlow.value = it }
+        }
+        viewModelScope.launch {
+            workManager.getWorkInfosByTagFlow(SyncWorker.SYNC_TAG).collect { workInfos ->
+                val runningWorkInfos = workInfos.filter { it.state == WorkInfo.State.RUNNING }
+                val syncingWorkInfo =
+                    if (runningWorkInfos.isNotEmpty()) {
+                        runningWorkInfos.maxByOrNull {
+                            it.progress.getInt(SyncWorker.PROGRESS_TOTAL_FEEDS, 0)
+                        }
+                    } else {
+                        workInfos.firstOrNull { it.state == WorkInfo.State.ENQUEUED }
+                    }
+                if (syncingWorkInfo == null) {
+                    _syncProgressFlow.value = SyncProgressUiState()
+                } else {
+                    _syncProgressFlow.value =
+                        SyncProgressUiState(
+                            currentFeedName =
+                                syncingWorkInfo.progress
+                                    .getString(SyncWorker.PROGRESS_CURRENT_FEED_NAME)
+                                    .orEmpty()
+                                    .ifBlank { null },
+                            completedFeeds =
+                                syncingWorkInfo.progress.getInt(SyncWorker.PROGRESS_COMPLETED_FEEDS, 0),
+                            totalFeeds =
+                                syncingWorkInfo.progress.getInt(SyncWorker.PROGRESS_TOTAL_FEEDS, 0),
+                        )
+                }
+            }
         }
     }
 
@@ -314,6 +348,9 @@ constructor(
                             publishedDate = article.date,
                             podcastUrl = extractPodcastMediaUrl(article.rawDescription),
                             videoUrl = extractVideoMediaUrl(article.rawDescription),
+                            translatedContent = null,
+                            translationError = null,
+                            isTranslating = false,
                         )
                         .prefetchArticleId()
                         .renderContent(this)
@@ -355,7 +392,10 @@ constructor(
     fun renderDescriptionContent() {
         _readerState.update {
             it.copy(
-                content = ReaderState.Description(content = currentArticle?.rawDescription ?: "")
+                content = ReaderState.Description(content = currentArticle?.rawDescription ?: ""),
+                translatedContent = null,
+                translationError = null,
+                isTranslating = false,
             )
         }
     }
@@ -367,12 +407,22 @@ constructor(
                     .readOrFetchFullContent(currentArticle!!)
                     .onSuccess { content ->
                         _readerState.update {
-                            it.copy(content = ReaderState.FullContent(content = content))
+                            it.copy(
+                                content = ReaderState.FullContent(content = content),
+                                translatedContent = null,
+                                translationError = null,
+                                isTranslating = false,
+                            )
                         }
                     }
                     .onFailure { th ->
                         _readerState.update {
-                            it.copy(content = ReaderState.Error(th.message.toString()))
+                            it.copy(
+                                content = ReaderState.Error(th.message.toString()),
+                                translatedContent = null,
+                                translationError = null,
+                                isTranslating = false,
+                            )
                         }
                     }
             }
@@ -403,7 +453,42 @@ constructor(
     }
 
     private fun setLoading() {
-        _readerState.update { it.copy(content = ReaderState.Loading) }
+        _readerState.update {
+            it.copy(
+                content = ReaderState.Loading,
+                translatedContent = null,
+                translationError = null,
+                isTranslating = false,
+            )
+        }
+    }
+
+    fun translateCurrentContent() {
+        val source = _readerState.value.content.text ?: return
+        if (_readerState.value.isTranslating) return
+
+        viewModelScope.launch {
+            _readerState.update { it.copy(isTranslating = true, translationError = null) }
+            translationHelper
+                .translateHtmlToChinese(source)
+                .onSuccess { translated ->
+                    _readerState.update {
+                        it.copy(
+                            translatedContent = translated,
+                            translationError = null,
+                            isTranslating = false,
+                        )
+                    }
+                }
+                .onFailure { throwable ->
+                    _readerState.update {
+                        it.copy(
+                            translationError = throwable.message ?: "Translation failed",
+                            isTranslating = false,
+                        )
+                    }
+                }
+        }
     }
 
     fun ReaderState.prefetchArticleId(): ReaderState {
@@ -475,6 +560,12 @@ data class ReadingUiState(
     val isStarred: Boolean = false,
 )
 
+data class SyncProgressUiState(
+    val currentFeedName: String? = null,
+    val completedFeeds: Int = 0,
+    val totalFeeds: Int = 0,
+)
+
 data class ReaderState(
     val articleId: String? = null,
     val feedName: String = "",
@@ -485,6 +576,9 @@ data class ReaderState(
     val videoUrl: String? = null,
     val publishedDate: Date = Date(0L),
     val content: ContentState = Loading,
+    val translatedContent: String? = null,
+    val translationError: String? = null,
+    val isTranslating: Boolean = false,
     val listIndex: Int? = null,
     val nextArticle: PrefetchResult? = null,
     val previousArticle: PrefetchResult? = null,

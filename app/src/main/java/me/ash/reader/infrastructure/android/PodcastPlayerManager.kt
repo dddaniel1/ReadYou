@@ -45,6 +45,7 @@ constructor(@ApplicationScope private val coroutineScope: CoroutineScope) {
 
     private var mediaPlayer: MediaPlayer? = null
     private var progressJob: Job? = null
+    private var pendingSeekMs: Int? = null
 
     var state: State
         get() = stateFlow.value
@@ -77,8 +78,9 @@ constructor(@ApplicationScope private val coroutineScope: CoroutineScope) {
         }
     }
 
-    fun play(url: String) {
+    fun play(url: String, startPositionMs: Int? = null) {
         stop()
+        pendingSeekMs = startPositionMs
 
         val player = MediaPlayer()
         mediaPlayer = player
@@ -91,6 +93,13 @@ constructor(@ApplicationScope private val coroutineScope: CoroutineScope) {
                 .build()
         )
         player.setOnPreparedListener {
+            pendingSeekMs
+                ?.takeIf { target -> target > 0 }
+                ?.let { target ->
+                    val duration = max(it.duration, 0)
+                    it.seekTo(target.coerceIn(0, duration))
+                }
+            pendingSeekMs = null
             it.start()
             updatePlayingState(url)
             startProgressUpdates(url)
@@ -143,6 +152,10 @@ constructor(@ApplicationScope private val coroutineScope: CoroutineScope) {
     fun seekTo(positionMs: Int) {
         val player = mediaPlayer ?: return
         val currentUrl = currentPodcastUrl() ?: return
+        if (state is State.Preparing) {
+            pendingSeekMs = positionMs
+            return
+        }
         val duration = max(player.duration, 0)
         val target = positionMs.coerceIn(0, duration)
         runCatching { player.seekTo(target) }
@@ -205,6 +218,7 @@ constructor(@ApplicationScope private val coroutineScope: CoroutineScope) {
             }
             ?.onFailure { Timber.d(it) }
         mediaPlayer = null
+        pendingSeekMs = null
         if (resetState) {
             state = State.Idle
         }

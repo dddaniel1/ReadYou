@@ -19,6 +19,7 @@ import androidx.compose.material.icons.automirrored.outlined.Article
 import androidx.compose.material.icons.automirrored.rounded.Article
 import androidx.compose.material.icons.filled.FiberManualRecord
 import androidx.compose.material.icons.outlined.FiberManualRecord
+import androidx.compose.material.icons.outlined.Translate
 import androidx.compose.material.icons.outlined.Headphones
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.Star
@@ -59,6 +60,9 @@ fun BottomBar(
     onFullContent: (isFullContent: Boolean) -> Unit = {},
     onBoldCharacters: () -> Unit = {},
     onReadAloud: () -> Unit = {},
+    onTranslate: () -> Unit = {},
+    isTranslating: Boolean = false,
+    hasTranslatedContent: Boolean = false,
 ) {
     val tonalElevation = LocalReadingPageTonalElevation.current
     val isOutlined = tonalElevation == ReadingPageTonalElevationPreference.Outlined
@@ -142,6 +146,21 @@ fun BottomBar(
                             onNextArticle()
                         }
                         ttsButton()
+                        CanBeDisabledIconButton(
+                            disabled = isTranslating,
+                            modifier = Modifier.size(40.dp),
+                            imageVector = Icons.Outlined.Translate,
+                            contentDescription = stringResource(R.string.translate_to_chinese),
+                            tint =
+                                if (hasTranslatedContent) {
+                                    MaterialTheme.colorScheme.onSecondaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.outline
+                                },
+                        ) {
+                            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                            onTranslate()
+                        }
                         CanBeDisabledIconButton(
                             disabled = false,
                             modifier = Modifier.size(40.dp),

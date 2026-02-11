@@ -90,6 +90,7 @@ abstract class AbstractRssRepository(
         accountId: Int,
         feedId: String?,
         groupId: String?,
+        progressReporter: SyncProgressReporter? = null,
     ): ListenableWorker.Result
 
     open suspend fun markAsRead(

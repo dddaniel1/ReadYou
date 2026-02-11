@@ -5,6 +5,7 @@ import androidx.work.ListenableWorker
 import androidx.work.WorkManager
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.util.Date
+import java.util.concurrent.atomic.AtomicInteger
 import javax.inject.Inject
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -58,7 +59,8 @@ constructor(
     override suspend fun sync(
         accountId: Int,
         feedId: String?,
-        groupId: String?
+        groupId: String?,
+        progressReporter: SyncProgressReporter?,
     ): ListenableWorker.Result = supervisorScope {
         return@supervisorScope runCatching {
             val preTime = System.currentTimeMillis()
@@ -76,10 +78,19 @@ constructor(
                     else -> feedDao.queryAll(accountId)
                 }
 
+            val totalFeeds = feedsToSync.size
+            val completedFeeds = AtomicInteger(0)
+            progressReporter?.onProgress(null, completedFeeds.get(), totalFeeds)
+
             feedsToSync
                 .mapIndexed { _, currentFeed ->
                     async(Dispatchers.IO) {
                         semaphore.withPermit {
+                            progressReporter?.onProgress(
+                                currentFeed.name,
+                                completedFeeds.get(),
+                                totalFeeds,
+                            )
                             val archivedArticles =
                                 feedDao
                                     .queryArchivedArticles(currentFeed.id)
@@ -101,6 +112,11 @@ constructor(
                                     fetchedFeed.copy(articles = newArticles, feed = currentFeed)
                                 )
                             }
+                            progressReporter?.onProgress(
+                                currentFeed.name,
+                                completedFeeds.incrementAndGet(),
+                                totalFeeds,
+                            )
                         }
                     }
                 }

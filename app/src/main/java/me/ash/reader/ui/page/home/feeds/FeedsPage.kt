@@ -34,6 +34,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
@@ -80,6 +81,7 @@ import me.ash.reader.ui.ext.findActivity
 import me.ash.reader.ui.ext.getCurrentVersion
 import me.ash.reader.ui.ext.surfaceColorAtElevation
 import me.ash.reader.ui.page.common.RouteName
+import me.ash.reader.domain.service.SyncWorker
 import me.ash.reader.ui.page.home.feeds.accounts.AccountsTab
 import me.ash.reader.ui.page.home.feeds.drawer.feed.FeedOptionDrawer
 import me.ash.reader.ui.page.home.feeds.drawer.group.GroupOptionDrawer
@@ -134,6 +136,9 @@ fun FeedsPage(
     val owner = LocalLifecycleOwner.current
 
     var isSyncing by remember { mutableStateOf(false) }
+    var syncCompletedFeeds by remember { mutableStateOf(0) }
+    var syncTotalFeeds by remember { mutableStateOf(0) }
+    var syncCurrentFeedName by remember { mutableStateOf<String?>(null) }
     val syncingState = rememberPullToRefreshState()
     val syncingScope = rememberCoroutineScope()
     val doSync: () -> Unit = {
@@ -158,7 +163,28 @@ fun FeedsPage(
         }
         feedsViewModel.syncWorkLiveData.observe(owner) { workInfoList ->
             workInfoList.let {
-                isSyncing = it.any { workInfo -> workInfo.state == WorkInfo.State.RUNNING }
+                val runningWorkInfos = it.filter { workInfo -> workInfo.state == WorkInfo.State.RUNNING }
+                isSyncing = runningWorkInfos.isNotEmpty()
+                val selectedWorkInfo =
+                    runningWorkInfos.maxByOrNull { workInfo ->
+                        workInfo.progress.getInt(SyncWorker.PROGRESS_TOTAL_FEEDS, 0)
+                    }
+
+                if (selectedWorkInfo != null) {
+                    syncCompletedFeeds =
+                        selectedWorkInfo.progress.getInt(SyncWorker.PROGRESS_COMPLETED_FEEDS, 0)
+                    syncTotalFeeds =
+                        selectedWorkInfo.progress.getInt(SyncWorker.PROGRESS_TOTAL_FEEDS, 0)
+                    syncCurrentFeedName =
+                        selectedWorkInfo.progress
+                            .getString(SyncWorker.PROGRESS_CURRENT_FEED_NAME)
+                            .orEmpty()
+                            .ifBlank { null }
+                } else {
+                    syncCompletedFeeds = 0
+                    syncTotalFeeds = 0
+                    syncCurrentFeedName = null
+                }
             }
         }
         onDispose { feedsViewModel.syncWorkLiveData.removeObservers(owner) }
@@ -243,6 +269,43 @@ fun FeedsPage(
                         ) {
                             feedsViewModel.changeFilter(filterState.copy(group = null, feed = null))
                             navigationToFlow()
+                        }
+                    }
+
+                    if (isSyncing && syncTotalFeeds > 0) {
+                        item {
+                            Surface(
+                                modifier =
+                                    Modifier.fillMaxWidth()
+                                        .padding(horizontal = 16.dp)
+                                        .padding(top = 12.dp),
+                                shape = MaterialTheme.shapes.large,
+                                color = MaterialTheme.colorScheme.secondaryContainer,
+                            ) {
+                                Row(
+                                    modifier =
+                                        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                ) {
+                                    Text(
+                                        text =
+                                            stringResource(
+                                                R.string.sync_rss_progress,
+                                                syncCompletedFeeds,
+                                                syncTotalFeeds,
+                                            ),
+                                        style = MaterialTheme.typography.labelLarge,
+                                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    )
+                                    Text(
+                                        text = syncCurrentFeedName ?: stringResource(R.string.loading),
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                        maxLines = 1,
+                                    )
+                                }
+                            }
                         }
                     }
 

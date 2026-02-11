@@ -262,6 +262,7 @@ fun ReadingPage(
                                             link = link,
                                             publishedDate = publishedDate,
                                             isLoading = content is ReaderState.Loading,
+                                            translatedContent = translatedContent,
                                             scrollState = scrollState,
                                             listState = listState,
                                             videoPlayer = {
@@ -322,6 +323,9 @@ fun ReadingPage(
                                 readerState.content.text ?: return@BottomBar
                             )
                         },
+                        onTranslate = { viewModel.translateCurrentContent() },
+                        isTranslating = readerState.isTranslating,
+                        hasTranslatedContent = !readerState.translatedContent.isNullOrBlank(),
                         ttsButton = {
                             TtsButton(
                                 onClick = {

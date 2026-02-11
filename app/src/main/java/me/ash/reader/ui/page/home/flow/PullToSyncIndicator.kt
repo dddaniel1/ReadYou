@@ -5,14 +5,15 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
-import androidx.compose.material3.LoadingIndicator
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -23,7 +24,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -33,15 +33,16 @@ import androidx.compose.ui.util.fastCoerceAtMost
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import me.ash.reader.ui.page.adaptive.SyncProgressUiState
 import me.ash.reader.ui.page.home.reading.PullToLoadDefaults
 import me.ash.reader.ui.page.home.reading.PullToLoadState
 
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun BoxScope.PullToSyncIndicator(
     pullToLoadState: PullToLoadState,
     modifier: Modifier = Modifier,
     isSyncing: Boolean,
+    syncProgress: SyncProgressUiState,
 ) {
     val hapticFeedback = LocalHapticFeedback.current
 
@@ -59,13 +60,6 @@ fun BoxScope.PullToSyncIndicator(
     val isSyncingFlow = snapshotFlow { isSyncing }
 
     val offsetSpec = remember {
-        spring<Float>(
-            stiffness = Spring.StiffnessMedium,
-            dampingRatio = Spring.DampingRatioMediumBouncy
-        )
-    }
-
-    val scaleSpec = remember {
         spring<Float>(
             stiffness = Spring.StiffnessMedium,
             dampingRatio = Spring.DampingRatioMediumBouncy
@@ -125,7 +119,7 @@ fun BoxScope.PullToSyncIndicator(
     val fraction by remember { derivedStateOf { animateOffsetFraction.value } }
 
 
-    Surface(
+    Column(
         modifier = modifier
             .statusBarsPadding()
             .padding(top = 72.dp)
@@ -141,30 +135,45 @@ fun BoxScope.PullToSyncIndicator(
                 this.scaleX = animateScale.value
                 this.scaleY = animateScale.value
             }
-            .size(48.dp),
-        color = MaterialTheme.colorScheme.primaryFixedDim,
-        shape = MaterialTheme.shapes.extraLarge) {
-        Box(
-            modifier = Modifier, contentAlignment = Alignment.Center
-        ) {
-            if (showIndeterminateIndicator) {
-                val scale = remember { Animatable(1f) }
-                LaunchedEffect(Unit) {
-                    scale.animateTo(1.2f, animationSpec = scaleSpec)
-                }
-                LoadingIndicator(
-                    color = MaterialTheme.colorScheme.onPrimaryFixedVariant,
-                    modifier = Modifier
-                        .size(38.dp)
-                        .scale(scale.value)
-                )
+            .padding(horizontal = 12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        val progressValue =
+            if (showIndeterminateIndicator && syncProgress.totalFeeds > 0) {
+                (syncProgress.completedFeeds.toFloat() / syncProgress.totalFeeds.toFloat())
+                    .coerceIn(0f, 1f)
             } else {
-                LoadingIndicator(
-                    progress = { fraction },
-                    color = MaterialTheme.colorScheme.onPrimaryFixedVariant,
-                    modifier = Modifier.size(34.dp)
-                )
+                fraction.coerceIn(0f, 1f)
+            }
+        val progressPercent = (progressValue * 100).toInt().coerceIn(0, 100)
+
+        Surface(
+            modifier = Modifier.size(48.dp),
+            color = MaterialTheme.colorScheme.primaryFixedDim,
+            shape = MaterialTheme.shapes.extraLarge,
+        ) {
+            Box(modifier = Modifier, contentAlignment = Alignment.Center) {
+                if (showIndeterminateIndicator && syncProgress.totalFeeds <= 0) {
+                    CircularProgressIndicator(
+                        color = MaterialTheme.colorScheme.onPrimaryFixedVariant,
+                        strokeWidth = 3.dp,
+                        modifier = Modifier.size(30.dp),
+                    )
+                } else {
+                    CircularProgressIndicator(
+                        progress = { progressValue },
+                        color = MaterialTheme.colorScheme.onPrimaryFixedVariant,
+                        strokeWidth = 3.dp,
+                        modifier = Modifier.size(30.dp),
+                    )
+                    Text(
+                        text = "$progressPercent%",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onPrimaryFixedVariant,
+                    )
+                }
             }
         }
+
     }
 }

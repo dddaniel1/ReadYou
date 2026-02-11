@@ -43,6 +43,8 @@
     <string name="all_allow_notification_toast">已允许来自 \"%1$s\" 分组的通知</string>
     <string name="all_deny_notification_toast">已拒绝来自 \"%1$s\" 分组的通知</string>
     <string name="parse_full_content">全文解析</string>
+    <string name="translate_to_chinese">翻译成中文</string>
+    <string name="translated_chinese_title">中英对照翻译</string>
     <string name="all_parse_full_content_tips">对 \"%1$s\" 分组中的所有文章进行全文解析</string>
     <string name="all_parse_full_content_toast">已允许全文解析 \"%1$s\" 分组的所有文章</string>
     <string name="all_deny_parse_full_content_toast">已拒绝全文解析\"%1$s\" 分组内所有文章</string>
@@ -350,4 +352,6 @@
     <string name="parse_full_content_desc">从网页获取完整内容</string>
     <string name="enable">启用</string>
     <string name="disable">停用</string>
+    <string name="sync_rss_progress">同步 RSS：%1$d/%2$d</string>
+    <string name="sync_rss_current">当前：%1$s</string>
 </resources>

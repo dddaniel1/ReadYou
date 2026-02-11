@@ -27,9 +27,27 @@ constructor(
         val feedId = data.getString("feedId")
         val groupId = data.getString("groupId")
 
+        val progressReporter =
+            SyncProgressReporter { currentFeedName, completedFeeds, totalFeeds ->
+                setProgress(
+                    workDataOf(
+                        PROGRESS_CURRENT_FEED_NAME to (currentFeedName ?: ""),
+                        PROGRESS_COMPLETED_FEEDS to completedFeeds,
+                        PROGRESS_TOTAL_FEEDS to totalFeeds,
+                    )
+                )
+            }
+
+        progressReporter.onProgress(currentFeedName = null, completedFeeds = 0, totalFeeds = 0)
+
         return rssService
             .get()
-            .sync(accountId = accountId, feedId = feedId, groupId = groupId)
+            .sync(
+                accountId = accountId,
+                feedId = feedId,
+                groupId = groupId,
+                progressReporter = progressReporter,
+            )
             .also {
                 rssService.get().clearKeepArchivedArticles().forEach {
                     readerCacheHelper.deleteCacheFor(articleId = it.id)
@@ -65,6 +83,10 @@ constructor(
         const val READER_TAG = "READER_TAG"
         const val ONETIME_WORK_TAG = "ONETIME_WORK_TAG"
         const val PERIODIC_WORK_TAG = "PERIODIC_WORK_TAG"
+
+        const val PROGRESS_CURRENT_FEED_NAME = "sync_progress_current_feed_name"
+        const val PROGRESS_COMPLETED_FEEDS = "sync_progress_completed_feeds"
+        const val PROGRESS_TOTAL_FEEDS = "sync_progress_total_feeds"
 
         fun cancelOneTimeWork(workManager: WorkManager) {
             workManager.cancelUniqueWork(SYNC_ONETIME_NAME)

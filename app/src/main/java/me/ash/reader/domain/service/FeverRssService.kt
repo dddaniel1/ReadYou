@@ -147,12 +147,15 @@ constructor(
         accountId: Int,
         feedId: String?,
         groupId: String?,
+        progressReporter: SyncProgressReporter?,
     ): ListenableWorker.Result = coroutineScope {
         try {
             val preTime = System.currentTimeMillis()
             val preDate = Date(preTime)
             val account = accountService.getAccountById(accountId)!!
             check(account.type.id == AccountType.Fever.id) { "account type is invalid" }
+
+            progressReporter?.onProgress("Cloud feeds", 0, 1)
 
             val feverAPI = getFeverAPI()
 
@@ -315,6 +318,7 @@ constructor(
                         } else account.lastArticleId,
                 )
             )
+            progressReporter?.onProgress("Cloud feeds", 1, 1)
             ListenableWorker.Result.success()
         } catch (e: Exception) {
             Log.e("RLog", "On sync exception: ${e.message}", e)
