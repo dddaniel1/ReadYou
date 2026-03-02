@@ -292,6 +292,8 @@
     <string name="add">Add</string>
     <string name="accounts_tips">You can switch accounts by tapping on the account name on the feed page</string>
     <string name="server_url">Server URL</string>
+    <string name="rsshub_base_url" translatable="false">RSSHub Base URL</string>
+    <string name="rsshub_base_url_required">Please configure RSSHub Base URL first</string>
     <string name="username">Username</string>
     <string name="password">Password</string>
     <string name="client_certificate">Client certificate (optional)</string>

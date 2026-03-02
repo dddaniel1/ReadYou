@@ -9,13 +9,18 @@ import be.ceau.opml.entity.Outline
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
+import me.ash.reader.R
 import me.ash.reader.domain.model.feed.Feed
 import me.ash.reader.domain.repository.FeedDao
 import me.ash.reader.domain.repository.GroupDao
 import me.ash.reader.infrastructure.di.IODispatcher
 import me.ash.reader.infrastructure.rss.OPMLDataSource
+import me.ash.reader.ui.ext.DataStoreKey
 import me.ash.reader.ui.ext.currentAccountId
+import me.ash.reader.ui.ext.dataStore
+import me.ash.reader.ui.ext.formatUrl
 import me.ash.reader.ui.ext.getDefaultGroupId
+import me.ash.reader.ui.ext.get
 import java.io.InputStream
 import java.util.*
 import javax.inject.Inject
@@ -51,15 +56,34 @@ class OpmlService @Inject constructor(
                     groupDao.insert(groupWithFeed.group)
                 }
                 val repeatList = mutableListOf<Feed>()
+                val normalizedFeedList = mutableListOf<Feed>()
                 groupWithFeed.feeds.forEach {
                     it.groupId = groupWithFeed.group.id
-                    if (rssService.get().isFeedExist(it.url)) {
-                        repeatList.add(it)
+                    val normalizedFeedUrl = normalizeImportedFeedUrl(it.url)
+                    val normalizedFeed = it.copy(url = normalizedFeedUrl, groupId = it.groupId)
+                    normalizedFeedList.add(normalizedFeed)
+                    if (rssService.get().isFeedExist(normalizedFeedUrl)) {
+                        repeatList.add(normalizedFeed)
                     }
                 }
-                feedDao.insertList((groupWithFeed.feeds subtract repeatList.toSet()).toList())
+                feedDao.insertList((normalizedFeedList subtract repeatList.toSet()).toList())
             }
         }
+    }
+
+    private fun normalizeImportedFeedUrl(rawUrl: String): String {
+        val input = rawUrl.trim()
+        val rssHubPrefix = "rsshub://"
+        if (!input.startsWith(rssHubPrefix, ignoreCase = true)) {
+            return input
+        }
+        val configuredBaseUrl = context.dataStore.get<String>(DataStoreKey.rssHubBaseUrl)?.trim().orEmpty()
+        if (configuredBaseUrl.isBlank()) {
+            throw IllegalStateException(context.getString(R.string.rsshub_base_url_required))
+        }
+        val rssHubBaseUrl = configuredBaseUrl.formatUrl().trimEnd('/')
+        val feedPath = input.substring(rssHubPrefix.length).trimStart('/')
+        return if (feedPath.isBlank()) rssHubBaseUrl else "$rssHubBaseUrl/$feedPath"
     }
 
     /**

@@ -186,6 +186,8 @@ interface FeedDao {
                 val updated =
                     new.copy(
                         icon = if (new.icon.isNullOrEmpty()) existing.icon else new.icon,
+                        etag = existing.etag,
+                        lastModified = existing.lastModified,
                         isNotification = existing.isNotification,
                         isFullContent = existing.isFullContent,
                         isBrowser = existing.isBrowser,

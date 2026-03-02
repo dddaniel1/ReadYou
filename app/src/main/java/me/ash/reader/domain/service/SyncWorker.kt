@@ -5,6 +5,7 @@ import androidx.hilt.work.HiltWorker
 import androidx.work.*
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import me.ash.reader.domain.model.account.Account
 import me.ash.reader.infrastructure.rss.ReaderCacheHelper
@@ -24,6 +25,9 @@ constructor(
         val data = inputData
         val accountId = data.getInt("accountId", -1)
         require(accountId != -1)
+        if (!tryAcquireAccountSync(accountId)) {
+            return Result.success()
+        }
         val feedId = data.getString("feedId")
         val groupId = data.getString("groupId")
 
@@ -40,35 +44,39 @@ constructor(
 
         progressReporter.onProgress(currentFeedName = null, completedFeeds = 0, totalFeeds = 0)
 
-        return rssService
-            .get()
-            .sync(
-                accountId = accountId,
-                feedId = feedId,
-                groupId = groupId,
-                progressReporter = progressReporter,
-            )
-            .also {
-                rssService.get().clearKeepArchivedArticles().forEach {
-                    readerCacheHelper.deleteCacheFor(articleId = it.id)
+        try {
+            return rssService
+                .get()
+                .sync(
+                    accountId = accountId,
+                    feedId = feedId,
+                    groupId = groupId,
+                    progressReporter = progressReporter,
+                )
+                .also {
+                    rssService.get().clearKeepArchivedArticles().forEach {
+                        readerCacheHelper.deleteCacheFor(articleId = it.id)
+                    }
+                    workManager
+                        .beginUniqueWork(
+                            uniqueWorkName = POST_SYNC_WORK_NAME,
+                            existingWorkPolicy = ExistingWorkPolicy.KEEP,
+                            OneTimeWorkRequestBuilder<ReaderWorker>()
+                                .addTag(READER_TAG)
+                                .addTag(ONETIME_WORK_TAG)
+                                .setBackoffCriteria(
+                                    backoffPolicy = BackoffPolicy.EXPONENTIAL,
+                                    backoffDelay = 30,
+                                    timeUnit = TimeUnit.SECONDS,
+                                )
+                                .build(),
+                        )
+                        .then(OneTimeWorkRequestBuilder<WidgetUpdateWorker>().build())
+                        .enqueue()
                 }
-                workManager
-                    .beginUniqueWork(
-                        uniqueWorkName = POST_SYNC_WORK_NAME,
-                        existingWorkPolicy = ExistingWorkPolicy.KEEP,
-                        OneTimeWorkRequestBuilder<ReaderWorker>()
-                            .addTag(READER_TAG)
-                            .addTag(ONETIME_WORK_TAG)
-                            .setBackoffCriteria(
-                                backoffPolicy = BackoffPolicy.EXPONENTIAL,
-                                backoffDelay = 30,
-                                timeUnit = TimeUnit.SECONDS,
-                            )
-                            .build(),
-                    )
-                    .then(OneTimeWorkRequestBuilder<WidgetUpdateWorker>().build())
-                    .enqueue()
-            }
+        } finally {
+            releaseAccountSync(accountId)
+        }
     }
 
     companion object {
@@ -88,6 +96,15 @@ constructor(
         const val PROGRESS_COMPLETED_FEEDS = "sync_progress_completed_feeds"
         const val PROGRESS_TOTAL_FEEDS = "sync_progress_total_feeds"
 
+        private val runningAccountSyncs = ConcurrentHashMap.newKeySet<Int>()
+
+        private fun tryAcquireAccountSync(accountId: Int): Boolean =
+            runningAccountSyncs.add(accountId)
+
+        private fun releaseAccountSync(accountId: Int) {
+            runningAccountSyncs.remove(accountId)
+        }
+
         fun cancelOneTimeWork(workManager: WorkManager) {
             workManager.cancelUniqueWork(SYNC_ONETIME_NAME)
         }
@@ -101,7 +118,7 @@ constructor(
             workManager
                 .beginUniqueWork(
                     SYNC_ONETIME_NAME,
-                    ExistingWorkPolicy.REPLACE,
+                    ExistingWorkPolicy.KEEP,
                     OneTimeWorkRequestBuilder<SyncWorker>()
                         .addTag(SYNC_TAG)
                         .addTag(ONETIME_WORK_TAG)

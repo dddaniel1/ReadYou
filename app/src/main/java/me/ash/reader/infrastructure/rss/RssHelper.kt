@@ -12,6 +12,7 @@ import com.rometools.rome.io.SyndFeedInput
 import com.rometools.rome.io.XmlReader
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.nio.charset.Charset
+import java.text.SimpleDateFormat
 import java.util.*
 import javax.inject.Inject
 import kotlinx.coroutines.CoroutineDispatcher
@@ -44,6 +45,19 @@ private val sourceAudioTagRegex =
     """<source[^>]*src=(["'])(.*?)\1[^>]*type=(["'])audio/[^"']+\3[^>]*>"""
         .toRegex(setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
 val imgRegex = """img.*?src=(["'])((?!data).*?)\1""".toRegex(RegexOption.DOT_MATCHES_ALL)
+private val retryableStatusCodes = setOf(429, 503)
+
+data class FeedFetchResult(
+    val articles: List<Article>,
+    val etag: String?,
+    val lastModified: String?,
+    val notModified: Boolean = false,
+)
+
+class FeedRequestThrottledException(
+    message: String,
+    val retryAfterMillis: Long?,
+) : IOException(message)
 
 /** Some operations on RSS. */
 class RssHelper
@@ -131,33 +145,70 @@ constructor(
         feed: Feed,
         latestLink: String?,
         preDate: Date = Date(),
-    ): List<Article> =
-        try {
+    ): FeedFetchResult {
+        return try {
             val accountId = context.currentAccountId
-            val response = response(okHttpClient, feed.url)
-            val contentType = response.header("Content-Type")
+            val response = response(okHttpClient, feed.url, feed.etag, feed.lastModified)
+            if (response.code == 304) {
+                response.close()
+                FeedFetchResult(
+                    articles = emptyList(),
+                    etag = feed.etag,
+                    lastModified = feed.lastModified,
+                    notModified = true,
+                )
+            } else if (!response.commonIsSuccessful) {
+                val retryAfterMillis = parseRetryAfterMillis(response.header("Retry-After"))
+                val responseCode = response.code
+                val responseMessage = response.message
+                response.close()
+                if (responseCode in retryableStatusCodes) {
+                    throw FeedRequestThrottledException(
+                        message = "Request throttled for ${feed.name}: $responseCode $responseMessage",
+                        retryAfterMillis = retryAfterMillis,
+                    )
+                }
+                throw IOException(responseMessage)
+            } else {
+                val contentType = response.header("Content-Type")
+                val etag = response.header("ETag") ?: feed.etag
+                val lastModified = response.header("Last-Modified") ?: feed.lastModified
 
-            val httpContentType =
-                contentType?.let {
-                    if (it.contains("charset=", ignoreCase = true)) it
-                    else "$it; charset=UTF-8"
-                } ?: "text/xml; charset=UTF-8"
+                val httpContentType =
+                    contentType?.let {
+                        if (it.contains("charset=", ignoreCase = true)) it
+                        else "$it; charset=UTF-8"
+                    } ?: "text/xml; charset=UTF-8"
 
-            response.body.byteStream().use { inputStream ->
-                SyndFeedInput()
-                    .apply { isPreserveWireFeed = true }
-                    .build(XmlReader(inputStream, httpContentType))
-                    .entries
-                    .asSequence()
-                    .takeWhile { latestLink == null || latestLink != it.link }
-                    .map { buildArticleFromSyndEntry(feed, accountId, it, preDate) }
-                    .toList()
+                response.body.byteStream().use { inputStream ->
+                    val articles =
+                        SyndFeedInput()
+                            .apply { isPreserveWireFeed = true }
+                            .build(XmlReader(inputStream, httpContentType))
+                            .entries
+                            .asSequence()
+                            .takeWhile { latestLink == null || latestLink != it.link }
+                            .map { buildArticleFromSyndEntry(feed, accountId, it, preDate) }
+                            .toList()
+                    FeedFetchResult(
+                        articles = articles,
+                        etag = etag,
+                        lastModified = lastModified,
+                    )
+                }
             }
+        } catch (e: FeedRequestThrottledException) {
+            throw e
         } catch (e: Exception) {
             e.printStackTrace()
             Log.e("RLog", "queryRssXml[${feed.name}]: ${e.message}")
-            listOf()
+            FeedFetchResult(
+                articles = emptyList(),
+                etag = feed.etag,
+                lastModified = feed.lastModified,
+            )
         }
+    }
 
     fun buildArticleFromSyndEntry(
         feed: Feed,
@@ -195,7 +246,13 @@ constructor(
             rawDescription = descriptionWithPodcast,
             shortDescription = Readability.parseToText(desc ?: content, syndEntry.link).take(280),
             //            fullContent = content,
-            img = findThumbnail(syndEntry) ?: findThumbnail(content ?: desc),
+            img =
+                findThumbnail(
+                    syndEntry = syndEntry,
+                    text = content ?: desc,
+                    articleLink = syndEntry.link,
+                    feedLink = feed.url,
+                ),
             link = syndEntry.link ?: "",
             updateAt = preDate,
         )
@@ -233,14 +290,32 @@ constructor(
             ?: sourceAudioTagRegex.find(text)?.groupValues?.getOrNull(2)
     }
 
-    fun findThumbnail(syndEntry: SyndEntry): String? {
-        if (syndEntry.enclosures?.firstOrNull()?.url != null) {
-            return syndEntry.enclosures.first().url
+    fun findThumbnail(
+        syndEntry: SyndEntry,
+        text: String?,
+        articleLink: String?,
+        feedLink: String?,
+    ): String? {
+        val mediaModule = syndEntry.getModule(MediaModule.URI) as? MediaEntryModule
+        val mediaThumbnail = mediaModule?.let { findThumbnail(it) }
+        if (!mediaThumbnail.isNullOrBlank()) {
+            return normalizeImageUrl(mediaThumbnail, articleLink, feedLink)
         }
 
-        val mediaModule = syndEntry.getModule(MediaModule.URI) as? MediaEntryModule
-        if (mediaModule != null) {
-            return findThumbnail(mediaModule)
+        val enclosureThumbnail =
+            syndEntry.enclosures
+                .firstOrNull {
+                    it.url?.isNotBlank() == true &&
+                        (it.type?.startsWith("image", ignoreCase = true) == true)
+                }
+                ?.url
+        if (!enclosureThumbnail.isNullOrBlank()) {
+            return normalizeImageUrl(enclosureThumbnail, articleLink, feedLink)
+        }
+
+        val htmlThumbnail = findThumbnail(text)
+        if (!htmlThumbnail.isNullOrBlank()) {
+            return normalizeImageUrl(htmlThumbnail, articleLink, feedLink)
         }
 
         return null
@@ -274,11 +349,59 @@ constructor(
         if (enclosure?.isNotBlank() == true) {
             return enclosure
         }
+
+        val document = Jsoup.parseBodyFragment(text)
+        val imageElement =
+            document.selectFirst("img[src],img[data-src],img[data-original],img[srcset],source[srcset]")
+
+        val srcCandidate =
+            imageElement
+                ?.attr("src")
+                ?.takeIf { it.isNotBlank() }
+                ?: imageElement
+                    ?.attr("data-src")
+                    ?.takeIf { it.isNotBlank() }
+                ?: imageElement
+                    ?.attr("data-original")
+                    ?.takeIf { it.isNotBlank() }
+
+        if (!srcCandidate.isNullOrBlank()) {
+            return srcCandidate.takeIf { !it.startsWith("data:") }
+        }
+
+        val srcsetCandidate =
+            imageElement
+                ?.attr("srcset")
+                ?.takeIf { it.isNotBlank() }
+                ?.split(',')
+                ?.mapNotNull { candidate -> candidate.trim().split(' ').firstOrNull()?.trim() }
+                ?.firstOrNull { it.isNotBlank() && !it.startsWith("data:") }
+
+        if (!srcsetCandidate.isNullOrBlank()) {
+            return srcsetCandidate
+        }
+
         // From https://gitlab.com/spacecowboy/Feeder
         // Using negative lookahead to skip data: urls, being inline base64
         // And capturing original quote to use as ending quote
         // Base64 encoded images can be quite large - and crash database cursors
         return imgRegex.find(text)?.groupValues?.get(2)?.takeIf { !it.startsWith("data:") }
+    }
+
+    private fun normalizeImageUrl(imageUrl: String, articleLink: String?, feedLink: String?): String {
+        val trimmed = imageUrl.trim()
+        if (trimmed.startsWith("http://", ignoreCase = true) ||
+            trimmed.startsWith("https://", ignoreCase = true)
+        ) {
+            return trimmed
+        }
+        if (trimmed.startsWith("//")) {
+            return "https:$trimmed"
+        }
+        val base = articleLink?.takeIf { it.isNotBlank() } ?: feedLink?.takeIf { it.isNotBlank() }
+        return runCatching {
+            if (base == null) trimmed else java.net.URI(base).resolve(trimmed).toString()
+        }.getOrDefault(trimmed)
     }
 
     suspend fun queryRssIconLink(feedLink: String?): String? {
@@ -294,8 +417,37 @@ constructor(
         feedDao.update(feed.copy(icon = iconLink))
     }
 
-    private suspend fun response(client: OkHttpClient, url: String): okhttp3.Response =
-        client.newCall(Request.Builder().url(url).build()).executeAsync()
+    private suspend fun response(
+        client: OkHttpClient,
+        url: String,
+        etag: String? = null,
+        lastModified: String? = null,
+    ): okhttp3.Response {
+        val requestBuilder = Request.Builder().url(url)
+        etag?.takeIf { it.isNotBlank() }?.let { requestBuilder.header("If-None-Match", it) }
+        lastModified
+            ?.takeIf { it.isNotBlank() }
+            ?.let { requestBuilder.header("If-Modified-Since", it) }
+        return client.newCall(requestBuilder.build()).executeAsync()
+    }
+
+    private fun parseRetryAfterMillis(retryAfter: String?): Long? {
+        if (retryAfter.isNullOrBlank()) return null
+        val seconds = retryAfter.toLongOrNull()
+        if (seconds != null) {
+            return (seconds * 1000L).coerceAtLeast(1000L)
+        }
+        val parsedDate =
+            runCatching {
+                    SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss zzz", Locale.US).apply {
+                        isLenient = false
+                        timeZone = TimeZone.getTimeZone("GMT")
+                    }.parse(retryAfter)
+                }
+                .getOrNull()
+                ?: return null
+        return (parsedDate.time - System.currentTimeMillis()).coerceAtLeast(1000L)
+    }
 }
 
 private fun String.withInjectedPodcastAudioTag(podcastUrl: String?): String {

@@ -7,8 +7,10 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.windowInsetsBottomHeight
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.RssFeed
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -32,11 +34,13 @@ import me.ash.reader.infrastructure.preference.LocalMarkAsReadOnScroll
 import me.ash.reader.infrastructure.preference.LocalOpenLink
 import me.ash.reader.infrastructure.preference.LocalOpenLinkSpecificBrowser
 import me.ash.reader.infrastructure.preference.LocalPullToSwitchArticle
+import me.ash.reader.infrastructure.preference.LocalRssHubBaseUrl
 import me.ash.reader.infrastructure.preference.LocalSettings
 import me.ash.reader.infrastructure.preference.LocalSharedContent
 import me.ash.reader.infrastructure.preference.LocalSortUnreadArticles
 import me.ash.reader.infrastructure.preference.OpenLinkPreference
 import me.ash.reader.infrastructure.preference.PullToLoadNextFeedPreference
+import me.ash.reader.infrastructure.preference.RssHubBaseUrlPreference
 import me.ash.reader.infrastructure.preference.SharedContentPreference
 import me.ash.reader.infrastructure.preference.SortUnreadArticlesPreference
 import me.ash.reader.infrastructure.preference.SwipeEndActionPreference
@@ -48,6 +52,7 @@ import me.ash.reader.ui.component.base.RYSwitch
 import me.ash.reader.ui.component.base.RadioDialog
 import me.ash.reader.ui.component.base.RadioDialogOption
 import me.ash.reader.ui.component.base.Subtitle
+import me.ash.reader.ui.component.base.TextFieldDialog
 import me.ash.reader.ui.ext.getBrowserAppList
 import me.ash.reader.ui.page.settings.SettingItem
 import me.ash.reader.ui.theme.palette.onLight
@@ -68,6 +73,7 @@ fun InteractionPage(
     val openLink = LocalOpenLink.current
     val openLinkSpecificBrowser = LocalOpenLinkSpecificBrowser.current
     val sharedContent = LocalSharedContent.current
+    val rssHubBaseUrl = LocalRssHubBaseUrl.current
     val settings = LocalSettings.current
     val pullToSwitchFeed = settings.pullToSwitchFeed
 
@@ -82,8 +88,10 @@ fun InteractionPage(
     var openLinkDialogVisible by remember { mutableStateOf(false) }
     var openLinkSpecificBrowserDialogVisible by remember { mutableStateOf(false) }
     var sharedContentDialogVisible by remember { mutableStateOf(false) }
+    var rssHubBaseUrlDialogVisible by remember { mutableStateOf(false) }
     var showSortUnreadArticlesDialog by remember { mutableStateOf(false) }
     var showPullToLoadDialog by remember { mutableStateOf(false) }
+    val rssHubBaseUrlState = rememberTextFieldState(rssHubBaseUrl)
 
     RYScaffold(
         containerColor = MaterialTheme.colorScheme.surface onLight MaterialTheme.colorScheme.inverseOnSurface,
@@ -222,6 +230,16 @@ fun InteractionPage(
                             }
                         },
                     ) {}
+                    SettingItem(
+                        title = stringResource(R.string.rsshub_base_url),
+                        desc = rssHubBaseUrl.ifBlank { stringResource(R.string.none) },
+                        onClick = {
+                            rssHubBaseUrlState.edit {
+                                replace(0, length, rssHubBaseUrl)
+                            }
+                            rssHubBaseUrlDialogVisible = true
+                        },
+                    ) {}
                     Spacer(modifier = Modifier.height(24.dp))
 
                     Subtitle(
@@ -356,6 +374,21 @@ fun InteractionPage(
     ) {
         sharedContentDialogVisible = false
     }
+
+    TextFieldDialog(
+        textFieldState = rssHubBaseUrlState,
+        visible = rssHubBaseUrlDialogVisible,
+        title = stringResource(R.string.rsshub_base_url),
+        icon = Icons.Rounded.RssFeed,
+        placeholder = RssHubBaseUrlPreference.placeholder,
+        onDismissRequest = {
+            rssHubBaseUrlDialogVisible = false
+        },
+        onConfirm = {
+            RssHubBaseUrlPreference.put(context, scope, it.trim())
+            rssHubBaseUrlDialogVisible = false
+        },
+    )
 
     RadioDialog(
         visible = showSortUnreadArticlesDialog,

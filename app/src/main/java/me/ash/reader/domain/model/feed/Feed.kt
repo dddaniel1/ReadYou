@@ -25,6 +25,10 @@ data class Feed(
     val icon: String? = null,
     @ColumnInfo
     val url: String,
+    @ColumnInfo
+    val etag: String? = null,
+    @ColumnInfo
+    val lastModified: String? = null,
     @ColumnInfo(index = true)
     var groupId: String,
     @ColumnInfo(index = true)
@@ -42,6 +46,8 @@ data class Feed(
         name: String,
         icon: String?,
         url: String,
+        etag: String? = null,
+        lastModified: String? = null,
         groupId: String,
         accountId: Int,
         isNotification: Boolean,
@@ -52,6 +58,8 @@ data class Feed(
         name = name,
         icon = icon,
         url = url,
+        etag = etag,
+        lastModified = lastModified,
         groupId = groupId,
         accountId = accountId,
         isNotification = isNotification,

@@ -245,6 +245,8 @@
     <string name="add">添加</string>
     <string name="accounts_tips">在订阅源页面中轻按账户名称来切换</string>
     <string name="server_url">服务器地址</string>
+    <string name="rsshub_base_url" translatable="false">RSSHub 根地址</string>
+    <string name="rsshub_base_url_required">请先配置 RSSHub 根地址</string>
     <string name="username">用户名</string>
     <string name="password">密码</string>
     <string name="connection">连接信息</string>

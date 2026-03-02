@@ -23,6 +23,7 @@ import me.ash.reader.domain.service.OpmlService
 import me.ash.reader.domain.service.RssService
 import me.ash.reader.infrastructure.android.AndroidStringsHelper
 import me.ash.reader.infrastructure.di.ApplicationScope
+import me.ash.reader.infrastructure.preference.SettingsProvider
 import me.ash.reader.infrastructure.rss.RssHelper
 import me.ash.reader.ui.ext.formatUrl
 
@@ -34,6 +35,7 @@ constructor(
     val rssService: RssService,
     private val rssHelper: RssHelper,
     private val androidStringsHelper: AndroidStringsHelper,
+    private val settingsProvider: SettingsProvider,
     @ApplicationScope private val applicationScope: CoroutineScope,
     accountService: AccountService,
 ) : ViewModel() {
@@ -71,8 +73,16 @@ constructor(
 
     fun importFromInputStream(inputStream: InputStream) {
         applicationScope.launch {
-            opmlService.saveToDatabase(inputStream)
-            rssService.get().doSyncOneTime()
+            runCatching {
+                opmlService.saveToDatabase(inputStream)
+                rssService.get().doSyncOneTime()
+            }.onFailure {
+                _subscribeState.value =
+                    SubscribeState.Idle(
+                        importFromOpmlEnabled = rssService.get().importSubscription,
+                        errorMessage = it.message,
+                    )
+            }
         }
     }
 
@@ -133,7 +143,15 @@ constructor(
         val currentState = _subscribeState.value
         if (currentState !is SubscribeState.Idle) return
         viewModelScope.launch {
-            val feedLink = currentState.linkState.text.trim().toString().formatUrl()
+            val feedLink = normalizeFeedLink(currentState.linkState.text.toString())
+            if (feedLink == null) {
+                _subscribeState.value =
+                    currentState.copy(
+                        errorMessage =
+                            androidStringsHelper.getString(R.string.rsshub_base_url_required)
+                    )
+                return@launch
+            }
             currentState.linkState.edit { this.replace(0, length, feedLink) }
 
             if (rssService.get().isFeedExist(feedLink)) {
@@ -167,6 +185,21 @@ constructor(
             _subscribeState.value =
                 SubscribeState.Fetching(linkState = currentState.linkState, job = job)
         }
+    }
+
+    private fun normalizeFeedLink(rawInput: String): String? {
+        val input = rawInput.trim()
+        val rssHubPrefix = "rsshub://"
+        if (!input.startsWith(rssHubPrefix, ignoreCase = true)) {
+            return input.formatUrl()
+        }
+        val configuredBaseUrl = settingsProvider.settings.rssHubBaseUrl.trim()
+        if (configuredBaseUrl.isBlank()) {
+            return null
+        }
+        val rssHubBaseUrl = configuredBaseUrl.formatUrl().trimEnd('/')
+        val feedPath = input.substring(rssHubPrefix.length).trimStart('/')
+        return if (feedPath.isBlank()) rssHubBaseUrl else "$rssHubBaseUrl/$feedPath"
     }
 
     fun cancelSearch() {

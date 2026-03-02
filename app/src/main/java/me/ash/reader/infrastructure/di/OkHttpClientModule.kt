@@ -30,6 +30,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import me.ash.reader.BuildConfig
 import okhttp3.Cache
+import okhttp3.Dispatcher
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.Response
@@ -54,13 +55,18 @@ import javax.net.ssl.X509TrustManager
 @InstallIn(SingletonComponent::class)
 object OkHttpClientModule {
 
+    private const val SYNC_MAX_REQUESTS = 16
+    private const val SYNC_MAX_REQUESTS_PER_HOST = 10
+
     @Provides
     @Singleton
     fun provideOkHttpClient(
         @ApplicationContext context: Context,
     ): OkHttpClient = cachingHttpClient(
         context = context,
-        cacheDirectory = context.cacheDir.resolve("http")
+        cacheDirectory = context.cacheDir.resolve("http"),
+        maxRequests = SYNC_MAX_REQUESTS,
+        maxRequestsPerHost = SYNC_MAX_REQUESTS_PER_HOST,
     ).newBuilder()
         .addNetworkInterceptor(UserAgentInterceptor)
         .build()
@@ -71,17 +77,28 @@ fun cachingHttpClient(
     cacheDirectory: File? = null,
     cacheSize: Long = 10L * 1024L * 1024L,
     trustAllCerts: Boolean = true,
+    callTimeoutSecs: Long = 20L,
     connectTimeoutSecs: Long = 30L,
     readTimeoutSecs: Long = 30L,
     clientCertificateAlias: String? = null,
+    maxRequests: Int = 64,
+    maxRequestsPerHost: Int = 5,
 ): OkHttpClient {
     val builder: OkHttpClient.Builder = OkHttpClient.Builder()
+
+    builder.dispatcher(
+        Dispatcher().apply {
+            this.maxRequests = maxRequests
+            this.maxRequestsPerHost = maxRequestsPerHost
+        }
+    )
 
     if (cacheDirectory != null) {
         builder.cache(Cache(cacheDirectory, cacheSize))
     }
 
     builder
+        .callTimeout(callTimeoutSecs, TimeUnit.SECONDS)
         .connectTimeout(connectTimeoutSecs, TimeUnit.SECONDS)
         .readTimeout(readTimeoutSecs, TimeUnit.SECONDS)
         .followRedirects(true)

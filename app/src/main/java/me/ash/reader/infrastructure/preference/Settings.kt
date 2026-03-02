@@ -80,6 +80,7 @@ data class Settings(
     val openLink: OpenLinkPreference = OpenLinkPreference.default,
     val openLinkSpecificBrowser: OpenLinkSpecificBrowserPreference = OpenLinkSpecificBrowserPreference.default,
     val sharedContent: SharedContentPreference = SharedContentPreference.default,
+    val rssHubBaseUrl: String = RssHubBaseUrlPreference.default,
 
     // Languages
     val languages: LanguagesPreference = LanguagesPreference.default,
