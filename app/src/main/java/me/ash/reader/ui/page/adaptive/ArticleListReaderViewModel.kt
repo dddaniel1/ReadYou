@@ -468,7 +468,13 @@ constructor(
         if (_readerState.value.isTranslating) return
 
         viewModelScope.launch {
-            _readerState.update { it.copy(isTranslating = true, translationError = null) }
+            _readerState.update {
+                it.copy(
+                    translatedContent = translationHelper.buildPlaceholderHtml(source),
+                    isTranslating = true,
+                    translationError = null,
+                )
+            }
             translationHelper
                 .translateHtmlToChinese(source)
                 .onSuccess { translated ->
@@ -483,6 +489,7 @@ constructor(
                 .onFailure { throwable ->
                     _readerState.update {
                         it.copy(
+                            translatedContent = null,
                             translationError = throwable.message ?: "Translation failed",
                             isTranslating = false,
                         )

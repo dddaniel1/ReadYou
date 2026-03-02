@@ -11,6 +11,9 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.executeAsync
 import org.json.JSONArray
+import org.jsoup.Jsoup
+import org.jsoup.nodes.Element
+import org.jsoup.parser.Tag
 
 class TranslationHelper
 @Inject
@@ -18,34 +21,69 @@ constructor(
     @IODispatcher private val ioDispatcher: CoroutineDispatcher,
     private val okHttpClient: OkHttpClient,
 ) {
+    fun buildPlaceholderHtml(content: String): String {
+        return runCatching {
+                val document = Jsoup.parseBodyFragment(content)
+                val translatableElements = document.collectTranslatableElements()
+                if (translatableElements.isEmpty()) {
+                    return@runCatching content
+                }
+
+                translatableElements.forEach { element ->
+                    element.after(
+                        createTranslationElement(
+                            sourceElement = element,
+                            text = TRANSLATION_LOADING_PLACEHOLDER,
+                        )
+                    )
+                }
+                document.body().html()
+            }
+            .getOrDefault(content)
+    }
+
     suspend fun translateHtmlToChinese(content: String): Result<String> {
         return withContext(ioDispatcher) {
             runCatching {
-                val plainText =
-                    Html.fromHtml(content, Html.FROM_HTML_MODE_LEGACY).toString().trim()
+                val plainText = Html.fromHtml(content, Html.FROM_HTML_MODE_LEGACY).toString().trim()
                 if (plainText.isBlank()) throw IllegalArgumentException("No text to translate")
 
-                val lines =
-                    plainText
-                        .lineSequence()
-                        .map { it.trim() }
-                        .filter { it.isNotEmpty() }
-                        .toList()
-                        .take(MAX_TRANSLATION_LINES)
-                if (lines.isEmpty()) throw IllegalArgumentException("No text to translate")
+                val document = Jsoup.parseBodyFragment(content)
+                val translatableElements = document.collectTranslatableElements()
+                if (translatableElements.isEmpty()) throw IllegalArgumentException("No text to translate")
 
-                val translatedBuilder = StringBuilder()
-                lines.forEachIndexed { index, line ->
-                    if (index > 0) translatedBuilder.append("\n\n")
-                    translatedBuilder.append(line).append('\n')
-                    val translatedLine = runCatching { translateChunk(line) }.getOrDefault("")
-                    translatedBuilder.append(translatedLine.ifBlank { "Translation unavailable" })
+                translatableElements.forEach { element ->
+                    val translatedText =
+                        runCatching { translateChunk(element.text().trim()) }.getOrDefault("")
+                    element.after(
+                        createTranslationElement(
+                            sourceElement = element,
+                            text = translatedText.ifBlank { TRANSLATION_UNAVAILABLE_PLACEHOLDER },
+                        )
+                    )
                 }
-                val translated = translatedBuilder.toString()
+                val translated = document.body().html()
 
                 translated.ifBlank { throw IOException("Empty translation response") }
             }
         }
+    }
+
+    private fun org.jsoup.nodes.Document.collectTranslatableElements(): List<Element> {
+        return body()
+            .select(TRANSLATABLE_SELECTOR)
+            .filter { element ->
+                !element.hasClass(TRANSLATION_PARAGRAPH_CLASS) &&
+                    element.text().isNotBlank() &&
+                    element.select(TRANSLATABLE_SELECTOR).none { it !== element }
+            }
+    }
+
+    private fun createTranslationElement(sourceElement: Element, text: String): Element {
+        return Element(Tag.valueOf(sourceElement.tagName()), "")
+            .addClass(TRANSLATION_PARAGRAPH_CLASS)
+            .attr("style", "margin-top:0.35em;")
+            .text(text)
     }
 
     private suspend fun translateChunk(chunk: String): String {
@@ -77,6 +115,9 @@ constructor(
     }
 
     companion object {
-        private const val MAX_TRANSLATION_LINES = 120
+        const val TRANSLATION_PARAGRAPH_CLASS = "ry-translation-placeholder"
+        private const val TRANSLATABLE_SELECTOR = "p,li,blockquote,h1,h2,h3,h4,h5,h6"
+        private const val TRANSLATION_LOADING_PLACEHOLDER = "..."
+        private const val TRANSLATION_UNAVAILABLE_PLACEHOLDER = "Translation unavailable"
     }
 }

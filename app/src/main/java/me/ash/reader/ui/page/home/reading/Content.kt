@@ -1,6 +1,5 @@
 package me.ash.reader.ui.page.home.reading
 
-import android.text.TextUtils
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -60,12 +59,7 @@ fun Content(
     val textContentWidth = LocalTextContentWidth.current
     val maxWidthModifier = Modifier.widthIn(max = textContentWidth)
     val uriHandler = LocalUriHandler.current
-    val displayedContent =
-        if (translatedContent.isNullOrBlank()) {
-            content
-        } else {
-            translatedContent.toInlineBilingualHtml()
-        }
+    val displayedContent = translatedContent ?: content
 
     val headline =
         @Composable {
@@ -162,25 +156,5 @@ fun Content(
                 }
             }
         }
-    }
-}
-
-private fun String.toInlineBilingualHtml(): String {
-    val escapedLines =
-        lineSequence()
-            .map { it.trimEnd() }
-            .map { line ->
-                if (line.isBlank()) {
-                    "<br/>"
-                } else {
-                    "<p>${TextUtils.htmlEncode(line)}</p>"
-                }
-            }
-            .toList()
-
-    return buildString {
-        append("<div>")
-        escapedLines.forEach { append(it) }
-        append("</div>")
     }
 }
